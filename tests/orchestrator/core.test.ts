@@ -255,9 +255,8 @@ describe("orchestrator core", () => {
 
     await orchestrator.pollTick();
     const runningEntry = orchestrator.getState().running["1"];
-    expect(runningEntry).toBeDefined();
     if (runningEntry === undefined) {
-      throw new Error("Expected issue 1 to be running.");
+      throw new Error("expected running entry for ISSUE-1");
     }
     runningEntry.startedAt = "2026-03-06T00:00:00.000Z";
     const result = await orchestrator.pollTick();
@@ -272,6 +271,158 @@ describe("orchestrator core", () => {
       issueId: "1",
       reason: "stall_timeout",
     });
+  });
+});
+
+describe("orchestrator core integration flows", () => {
+  it("redispatches a retried issue through a fake runner boundary after an abnormal exit", async () => {
+    const harness = createIntegrationHarness();
+
+    const initialTick = await harness.orchestrator.pollTick();
+
+    expect(initialTick.dispatchedIssueIds).toEqual(["1"]);
+    expect(harness.spawnCalls).toEqual([
+      {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        attempt: null,
+      },
+    ]);
+    expect([...harness.orchestrator.getState().claimed]).toEqual(["1"]);
+
+    const retryEntry = harness.orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "turn failed",
+    });
+
+    expect(retryEntry).toMatchObject({
+      issueId: "1",
+      attempt: 1,
+      error: "worker exited: turn failed",
+    });
+    expect(harness.orchestrator.getState().running).toEqual({});
+
+    const retryResult = await harness.orchestrator.onRetryTimer("1");
+
+    expect(retryResult).toEqual({
+      dispatched: true,
+      released: false,
+      retryEntry: null,
+    });
+    expect(harness.spawnCalls).toEqual([
+      {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        attempt: null,
+      },
+      {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        attempt: 1,
+      },
+    ]);
+    expect(harness.orchestrator.getState().running["1"]?.retryAttempt).toBe(1);
+    expect([...harness.orchestrator.getState().claimed]).toEqual(["1"]);
+  });
+
+  it("requests terminal cleanup through the fake runner boundary and releases the claim once the issue disappears", async () => {
+    const harness = createIntegrationHarness();
+
+    await harness.orchestrator.pollTick();
+    harness.setStateSnapshots([
+      { id: "1", identifier: "ISSUE-1", state: "Done" },
+    ]);
+
+    const reconcileTick = await harness.orchestrator.pollTick();
+
+    expect(reconcileTick.stopRequests).toEqual([
+      {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        cleanupWorkspace: true,
+        reason: "terminal_state",
+      },
+    ]);
+    expect(harness.stopCalls).toEqual([
+      {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        cleanupWorkspace: true,
+        reason: "terminal_state",
+      },
+    ]);
+
+    harness.orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "stopped after terminal reconciliation",
+    });
+    harness.setCandidates([]);
+
+    const retryResult = await harness.orchestrator.onRetryTimer("1");
+
+    expect(retryResult).toEqual({
+      dispatched: false,
+      released: true,
+      retryEntry: null,
+    });
+    expect([...harness.orchestrator.getState().claimed]).toEqual([]);
+    expect(harness.orchestrator.getState().retryAttempts).toEqual({});
+  });
+
+  it("stops a stalled worker through the fake runner boundary and releases it when the issue is no longer active", async () => {
+    const harness = createIntegrationHarness({
+      now: "2026-03-06T00:10:00.000Z",
+      config: createConfig({
+        codex: { stallTimeoutMs: 60_000 },
+      }),
+    });
+
+    await harness.orchestrator.pollTick();
+    const runningEntry = harness.orchestrator.getState().running["1"];
+    if (runningEntry === undefined) {
+      throw new Error("expected running entry for ISSUE-1");
+    }
+    runningEntry.startedAt = "2026-03-06T00:00:00.000Z";
+
+    const reconcileTick = await harness.orchestrator.pollTick();
+
+    expect(reconcileTick.stopRequests).toContainEqual({
+      issueId: "1",
+      issueIdentifier: "ISSUE-1",
+      cleanupWorkspace: false,
+      reason: "stall_timeout",
+    });
+    expect(harness.stopCalls).toContainEqual({
+      issueId: "1",
+      issueIdentifier: "ISSUE-1",
+      cleanupWorkspace: false,
+      reason: "stall_timeout",
+    });
+
+    harness.orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "stalled",
+    });
+    harness.setCandidates([
+      createIssue({
+        id: "1",
+        identifier: "ISSUE-1",
+        state: "Backlog",
+      }),
+    ]);
+
+    const retryResult = await harness.orchestrator.onRetryTimer("1");
+
+    expect(retryResult).toEqual({
+      dispatched: false,
+      released: true,
+      retryEntry: null,
+    });
+    expect([...harness.orchestrator.getState().claimed]).toEqual([]);
+    expect(harness.orchestrator.getState().retryAttempts).toEqual({});
   });
 });
 
@@ -408,5 +559,83 @@ function createFakeTimerScheduler() {
       return { callback, delayMs } as unknown as ReturnType<typeof setTimeout>;
     },
     clear() {},
+  };
+}
+
+function createIntegrationHarness(input?: {
+  config?: ResolvedWorkflowConfig;
+  now?: string;
+  candidates?: Issue[];
+  statesById?: IssueStateSnapshot[];
+}) {
+  const trackerState = {
+    candidates: input?.candidates ?? [
+      createIssue({ id: "1", identifier: "ISSUE-1" }),
+    ],
+    statesById: input?.statesById ?? [
+      { id: "1", identifier: "ISSUE-1", state: "In Progress" },
+    ],
+  };
+  const spawnCalls: Array<{
+    issueId: string;
+    issueIdentifier: string;
+    attempt: number | null;
+  }> = [];
+  const stopCalls: Array<{
+    issueId: string;
+    issueIdentifier: string;
+    cleanupWorkspace: boolean;
+    reason: string;
+  }> = [];
+
+  const tracker: IssueTracker = {
+    async fetchCandidateIssues() {
+      return trackerState.candidates.map((issue) => ({ ...issue }));
+    },
+    async fetchIssuesByStates() {
+      return [];
+    },
+    async fetchIssueStatesByIds(issueIds) {
+      return trackerState.statesById
+        .filter((snapshot) => issueIds.includes(snapshot.id))
+        .map((snapshot) => ({ ...snapshot }));
+    },
+  };
+
+  const orchestrator = new OrchestratorCore({
+    config: input?.config ?? createConfig(),
+    tracker,
+    now: () => new Date(input?.now ?? "2026-03-06T00:00:05.000Z"),
+    spawnWorker: async ({ issue, attempt }) => {
+      spawnCalls.push({
+        issueId: issue.id,
+        issueIdentifier: issue.identifier,
+        attempt,
+      });
+      return {
+        workerHandle: { issueId: issue.id, attempt },
+        monitorHandle: { issueId: issue.id, attempt },
+      };
+    },
+    stopRunningIssue: async (stopRequest) => {
+      stopCalls.push({
+        issueId: stopRequest.issueId,
+        issueIdentifier: stopRequest.runningEntry.identifier,
+        cleanupWorkspace: stopRequest.cleanupWorkspace,
+        reason: stopRequest.reason,
+      });
+    },
+  });
+
+  return {
+    orchestrator,
+    spawnCalls,
+    stopCalls,
+    setCandidates(candidates: Issue[]) {
+      trackerState.candidates = candidates;
+    },
+    setStateSnapshots(statesById: IssueStateSnapshot[]) {
+      trackerState.statesById = statesById;
+    },
   };
 }
