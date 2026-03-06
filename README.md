@@ -47,7 +47,7 @@ symphony --help
 ### Quickstart
 
 1. Go to the repository you want Symphony to operate on.
-2. Create `WORKFLOW.md`.
+2. Create `WORKFLOW.md` in that repository.
 3. Export `LINEAR_API_KEY`.
 4. Start Symphony from that repository root.
 
@@ -69,6 +69,9 @@ You can also run without global install:
 npx symphony-ts ./WORKFLOW.md --acknowledge-high-trust-preview --port 4321
 ```
 
+Symphony does not generate `WORKFLOW.md` for you. It expects a repository-owned workflow file and,
+by default, reads `./WORKFLOW.md` from the current working directory.
+
 <details>
 <summary>Agent setup prompt</summary>
 
@@ -84,7 +87,7 @@ Requirements:
 
 </details>
 
-### Minimal `WORKFLOW.md`
+### `WORKFLOW.md` template
 
 ```md
 ---
@@ -104,7 +107,8 @@ You are working on Linear issue {{ issue.identifier }}.
 Implement the task, validate the result, and stop at the required handoff state.
 ```
 
-At minimum, you usually need to customize:
+This is the only example `WORKFLOW.md` you need to get started. Copy it into your repository root
+as `WORKFLOW.md`, then change these fields before starting Symphony:
 
 - `tracker.project_slug`
 - `workspace.root`
@@ -169,34 +173,6 @@ Symphony is a long-running service that:
 In a typical setup, Symphony watches a Linear board, dispatches agent runs for ready tickets, and
 lets the agents produce proof of work such as CI status, review feedback, and pull requests. Human
 operators stay focused on the work itself instead of supervising every agent turn.
-
-### Configure your repository
-
-Create a `WORKFLOW.md` that defines how Symphony should operate in your codebase.
-The YAML front matter configures tracker, workspace, hooks, and runtime behavior.
-The Markdown body becomes the agent prompt template.
-
-Example:
-
-```md
----
-tracker:
-  kind: linear
-  api_key: $LINEAR_API_KEY
-  project_slug: ENG
-workspace:
-  root: ~/code/symphony-workspaces
-agent:
-  max_concurrent_agents: 10
-codex:
-  command: codex app-server
-server:
-  port: 4321
----
-
-You are working on Linear issue {{ issue.identifier }}.
-Implement the task, validate the result, and stop at the required handoff state.
-```
 
 ## Why Teams Use It
 
