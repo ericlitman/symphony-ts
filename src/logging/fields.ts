@@ -1,0 +1,31 @@
+export const LOG_FIELDS = [
+  "timestamp",
+  "level",
+  "event",
+  "message",
+  "issue_id",
+  "issue_identifier",
+  "session_id",
+  "thread_id",
+  "turn_id",
+  "attempt",
+  "state",
+  "workspace_path",
+  "poll_interval_ms",
+  "max_concurrent_agents",
+  "input_tokens",
+  "output_tokens",
+  "total_tokens",
+  "rate_limit_requests_remaining",
+  "rate_limit_tokens_remaining",
+  "duration_ms",
+  "error_code",
+] as const;
+
+export type LogField = (typeof LOG_FIELDS)[number];
+
+export const REQUIRED_LOG_CONTEXT_FIELDS = [
+  "issue_id",
+  "issue_identifier",
+  "session_id",
+] as const satisfies readonly LogField[];

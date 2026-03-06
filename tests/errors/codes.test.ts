@@ -1,0 +1,20 @@
+import { describe, expect, it } from "vitest";
+
+import { ERROR_CODES } from "../../src/errors/codes.js";
+
+describe("ERROR_CODES", () => {
+  it("contains the typed workflow parsing failures required by the spec", () => {
+    expect(ERROR_CODES.workflowNotFound).toBe("workflow_not_found");
+    expect(ERROR_CODES.workflowYamlInvalid).toBe("workflow_yaml_invalid");
+    expect(ERROR_CODES.workflowFrontmatterNotMap).toBe(
+      "workflow_frontmatter_not_map",
+    );
+  });
+
+  it("contains the mandatory workspace and codex failure families", () => {
+    expect(ERROR_CODES.workspaceRootEscape).toBe("workspace_root_escape");
+    expect(ERROR_CODES.hookTimedOut).toBe("hook_timed_out");
+    expect(ERROR_CODES.codexReadTimeout).toBe("codex_read_timeout");
+    expect(ERROR_CODES.codexTurnTimeout).toBe("codex_turn_timeout");
+  });
+});
