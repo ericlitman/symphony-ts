@@ -104,6 +104,9 @@ as `WORKFLOW.md`, then change these fields before starting Symphony:
 
 If you want the dashboard, keep `server.port` in the workflow or pass `--port` on the CLI.
 
+For a complete reference covering every supported field with defaults and inline documentation, see
+[docs/WORKFLOW.template.md](docs/WORKFLOW.template.md).
+
 ### What You Get
 
 Once Symphony is running, it will:
@@ -116,14 +119,26 @@ Once Symphony is running, it will:
 
 ### Develop
 
-If you are developing Symphony itself rather than using the published CLI, you will also need `pnpm >= 10`.
+To develop Symphony itself you will need:
+
+- Node.js `>= 22`
+- pnpm `>= 10`
+- Codex CLI with `codex app-server` support
 
 ```bash
 pnpm install
 pnpm build
-pnpm test
-pnpm lint
-pnpm format
+node dist/src/cli/main.js --help   # verify the build
+```
+
+Run checks:
+
+```bash
+pnpm test           # run all tests once
+pnpm test:watch     # watch mode
+pnpm typecheck      # TypeScript type check only
+pnpm lint           # Biome lint check
+pnpm format         # Biome auto-format
 ```
 
 ### Run From Source
@@ -135,6 +150,8 @@ pnpm install
 pnpm build
 node dist/src/cli/main.js --acknowledge-high-trust-preview
 ```
+
+See [docs/DEV_GUIDE.md](docs/DEV_GUIDE.md) for a full walkthrough including Linear setup, `WORKFLOW.md` configuration, and troubleshooting.
 
 ## Roadmap
 
