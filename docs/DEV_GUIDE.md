@@ -215,19 +215,17 @@ node dist/src/cli/main.js --acknowledge-high-trust-preview --port 3000
 
 > `--acknowledge-high-trust-preview` is a required safety flag. Symphony runs agent code without sandboxing by default; this flag confirms you understand that.
 
-### Authenticated CLI note
+### Environment and networked CLI note
 
-Environment variables from the launching shell are available to the agent runtime, but do not
-assume that an interactive login state or OS keychain-backed credential will be usable inside an
-agent turn. If your workflow depends on authenticated networked tools such as `gh`, export
-env-based credentials before launching Symphony, for example:
+If your workflow depends on environment variables from the launching shell, launch Codex with
+shell environment inheritance enabled:
 
-```bash
-export LINEAR_API_KEY=lin_api_xxx
-export GH_TOKEN="$(gh auth token)"
+```yaml
+codex:
+  command: codex --config shell_environment_policy.inherit=all app-server
 ```
 
-If the agent must use those tools during a turn, configure an explicit
+If the agent must use networked tools during a turn, configure an explicit
 `codex.turn_sandbox_policy` that allows network access, for example:
 
 ```yaml
@@ -245,9 +243,14 @@ codex:
     excludeSlashTmp: false
 ```
 
-The exact accepted values depend on the installed Codex app-server version. To inspect the local
-schema, run `codex app-server generate-json-schema --out <dir>` and inspect the generated
-`ThreadStartParams` and `TurnStartParams` schema files.
+With that in place, env-based credentials exported before launching Symphony are available to turn
+commands. If a specific external CLI still does not find usable credentials in your environment,
+provide that tool's credential explicitly via an env var such as `GH_TOKEN`, `GITHUB_TOKEN`, or a
+provider-specific API key.
+
+The exact accepted sandbox and approval values depend on the installed Codex app-server version. To
+inspect the local schema, run `codex app-server generate-json-schema --out <dir>` and inspect the
+generated `ThreadStartParams` and `TurnStartParams` schema files.
 
 ### Step 6: Trigger a Test Issue in Linear
 

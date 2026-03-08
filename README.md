@@ -104,18 +104,20 @@ as `WORKFLOW.md`, then change these fields before starting Symphony:
 
 If you want the dashboard, keep `server.port` in the workflow or pass `--port` on the CLI.
 
-If your agent workflow needs authenticated networked CLIs such as `gh`, do not assume an
-interactive login state or OS keychain entry will be available inside the agent turn. Export the
-required credentials as environment variables before launching Symphony, for example:
+If your agent workflow needs access to environment variables from the launching shell, configure
+Codex to inherit them in `codex.command`, for example:
 
-```bash
-export LINEAR_API_KEY=lin_api_xxx
-export GH_TOKEN="$(gh auth token)"
+```yaml
+codex:
+  command: codex --config shell_environment_policy.inherit=all app-server
 ```
 
 If your agent must push branches, open PRs, or call external APIs during a turn, also configure a
 turn sandbox policy that explicitly allows network access instead of relying on a minimal
 `workspaceWrite` sandbox object.
+
+If a specific external CLI still does not see the credentials it needs in your environment, provide
+that tool's credential via environment variables before launching Symphony.
 
 For a complete reference covering every supported field with defaults and inline documentation, see
 [docs/WORKFLOW.template.md](docs/WORKFLOW.template.md).

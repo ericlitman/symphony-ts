@@ -95,6 +95,8 @@ agent:
 # ============================================================
 codex:
   # Shell command used to launch the Codex app-server.
+  # Add `--config shell_environment_policy.inherit=all` if agent turns
+  # should inherit environment variables from the launching shell.
   # Default: codex app-server
   command: codex app-server
 
@@ -157,14 +159,17 @@ Rules:
 3. Run the test suite before finishing.
 4. Do not add secrets or credentials to the repository.
 
-If this workflow needs authenticated external CLIs or APIs:
+If this workflow needs environment variables from the launching shell:
 
-1. Export the required credentials in the shell before launching Symphony.
-2. Prefer env-based credentials such as `GH_TOKEN`, `GITHUB_TOKEN`, or provider-specific API keys.
-3. Do not assume an interactive login state or OS keychain entry will be available inside the
-   agent turn.
-4. If the agent must call networked tools during a turn, configure `codex.turn_sandbox_policy`
-   with explicit `networkAccess: true`.
+1. Launch Codex with `--config shell_environment_policy.inherit=all`.
+2. Export the required environment variables before launching Symphony.
+
+If the agent must call networked tools during a turn:
+
+1. Configure `codex.turn_sandbox_policy` with explicit `networkAccess: true`.
+2. If a specific CLI still does not find usable credentials in your environment, provide that
+   tool's credential via an env var such as `GH_TOKEN`, `GITHUB_TOKEN`, or a provider-specific API
+   key.
 
 When finished:
 
