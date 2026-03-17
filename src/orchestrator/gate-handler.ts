@@ -7,11 +7,13 @@ import type { Issue } from "../domain/model.js";
 
 /**
  * Single reviewer verdict — the minimal JSON layer of the two-layer output.
+ * "error" means the reviewer failed to execute (rate limit, network, etc.)
+ * and should not count as a code review failure.
  */
 export interface ReviewerVerdict {
   role: string;
   model: string;
-  verdict: "pass" | "fail";
+  verdict: "pass" | "fail" | "error";
 }
 
 /**
@@ -51,6 +53,8 @@ export interface EnsembleGateHandlerOptions {
   createReviewerClient: CreateReviewerClient;
   postComment?: PostComment;
   workspacePath?: string;
+  /** Override retry base delay (ms) for testing. Default: 5000. */
+  retryBaseDelayMs?: number;
 }
 
 /**
@@ -71,10 +75,11 @@ export async function runEnsembleGate(
   }
 
   const diff = workspacePath ? getDiff(workspacePath) : null;
+  const retryBaseDelayMs = options.retryBaseDelayMs ?? REVIEWER_RETRY_BASE_DELAY_MS;
 
   const results = await Promise.all(
     reviewers.map((reviewer) =>
-      runSingleReviewer(reviewer, issue, createReviewerClient, diff),
+      runSingleReviewer(reviewer, issue, createReviewerClient, diff, retryBaseDelayMs),
     ),
   );
 
@@ -93,53 +98,95 @@ export async function runEnsembleGate(
 }
 
 /**
- * Aggregate individual verdicts: any FAIL = FAIL, else PASS.
+ * Aggregate individual verdicts.
+ * - Any explicit "fail" verdict (from a reviewer that actually ran) = FAIL.
+ * - If ALL reviewers errored (no pass or fail verdicts), = FAIL (can't skip review).
+ * - Otherwise (all pass/error with at least one pass) = PASS.
  */
 export function aggregateVerdicts(results: ReviewerResult[]): AggregateVerdict {
   if (results.length === 0) {
     return "pass";
   }
 
-  return results.some((r) => r.verdict.verdict === "fail") ? "fail" : "pass";
+  const hasExplicitFail = results.some((r) => r.verdict.verdict === "fail");
+  if (hasExplicitFail) {
+    return "fail";
+  }
+
+  const hasAnyNonError = results.some((r) => r.verdict.verdict !== "error");
+  if (!hasAnyNonError) {
+    // All reviewers errored — can't skip review entirely
+    return "fail";
+  }
+
+  return "pass";
 }
 
 /**
- * Run a single reviewer: create client, send prompt, parse output.
+ * Maximum number of retry attempts for transient reviewer errors
+ * (rate limits, network timeouts, etc.)
+ */
+export const MAX_REVIEWER_RETRIES = 3;
+
+/**
+ * Delay between retry attempts in ms (doubles each attempt).
+ */
+export const REVIEWER_RETRY_BASE_DELAY_MS = 5_000;
+
+/**
+ * Run a single reviewer with retries for transient errors.
+ * Infrastructure failures (rate limits, network) are retried up to MAX_REVIEWER_RETRIES times.
+ * If all retries fail, returns an "error" verdict instead of "fail" so it doesn't
+ * block the gate on infrastructure issues.
  */
 async function runSingleReviewer(
   reviewer: ReviewerDefinition,
   issue: Issue,
   createReviewerClient: CreateReviewerClient,
   diff: string | null,
+  retryBaseDelayMs: number = REVIEWER_RETRY_BASE_DELAY_MS,
 ): Promise<ReviewerResult> {
-  const client = createReviewerClient(reviewer);
-  try {
-    const prompt = buildReviewerPrompt(reviewer, issue, diff);
-    const title = `Review: ${issue.identifier} (${reviewer.role})`;
-    const result: CodexTurnResult = await client.startSession({ prompt, title });
-    const raw = result.message ?? "";
-    return parseReviewerOutput(reviewer, raw);
-  } catch (error) {
-    // Reviewer failure is treated as a FAIL verdict.
-    const message =
-      error instanceof Error ? error.message : "Reviewer process failed";
-    return {
-      reviewer,
-      verdict: {
-        role: reviewer.role,
-        model: reviewer.model ?? "unknown",
-        verdict: "fail",
-      },
-      feedback: `Reviewer error: ${message}`,
-      raw: "",
-    };
-  } finally {
+  const prompt = buildReviewerPrompt(reviewer, issue, diff);
+  const title = `Review: ${issue.identifier} (${reviewer.role})`;
+  let lastError = "";
+
+  for (let attempt = 0; attempt <= MAX_REVIEWER_RETRIES; attempt++) {
+    const client = createReviewerClient(reviewer);
     try {
-      await client.close();
-    } catch {
-      // Best-effort cleanup.
+      const result: CodexTurnResult = await client.startSession({ prompt, title });
+      const raw = result.message ?? "";
+      return parseReviewerOutput(reviewer, raw);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error.message : "Reviewer process failed";
+      // Close client before retry
+      try { await client.close(); } catch { /* best-effort */ }
+
+      if (attempt < MAX_REVIEWER_RETRIES) {
+        const delay = retryBaseDelayMs * Math.pow(2, attempt);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        // Best-effort cleanup.
+      }
     }
   }
+
+  // All retries exhausted — infrastructure failure, not a code review failure.
+  return {
+    reviewer,
+    verdict: {
+      role: reviewer.role,
+      model: reviewer.model ?? "unknown",
+      verdict: "error",
+    },
+    feedback: `Failed after ${MAX_REVIEWER_RETRIES + 1} attempts. Last error: ${lastError}`,
+    raw: "",
+  };
 }
 
 /**
@@ -296,7 +343,8 @@ export function formatGateComment(
       : "## Ensemble Review: FAIL";
 
   const sections = results.map((r) => {
-    const icon = r.verdict.verdict === "pass" ? "PASS" : "FAIL";
+    const iconMap = { pass: "PASS", fail: "FAIL", error: "ERROR" } as const;
+    const icon = iconMap[r.verdict.verdict] ?? "FAIL";
     return [
       `### ${r.verdict.role} (${r.verdict.model}): ${icon}`,
       "",
