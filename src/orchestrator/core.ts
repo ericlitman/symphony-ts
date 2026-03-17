@@ -85,6 +85,7 @@ export interface OrchestratorCoreOptions {
     issue: Issue;
     stage: StageDefinition;
   }) => Promise<EnsembleGateResult>;
+  postComment?: (issueId: string, body: string) => Promise<void>;
   timerScheduler?: TimerScheduler;
   now?: () => Date;
 }
@@ -100,6 +101,8 @@ export class OrchestratorCore {
 
   private readonly runEnsembleGate?: OrchestratorCoreOptions["runEnsembleGate"];
 
+  private readonly postComment?: OrchestratorCoreOptions["postComment"];
+
   private readonly timerScheduler: TimerScheduler;
 
   private readonly now: () => Date;
@@ -112,6 +115,7 @@ export class OrchestratorCore {
     this.spawnWorker = options.spawnWorker;
     this.stopRunningIssue = options.stopRunningIssue;
     this.runEnsembleGate = options.runEnsembleGate;
+    this.postComment = options.postComment;
     this.timerScheduler = options.timerScheduler ?? defaultTimerScheduler();
     this.now = options.now ?? (() => new Date());
     this.state = createInitialOrchestratorState({
@@ -435,6 +439,16 @@ export class OrchestratorCore {
             error: `Ensemble review failed: ${result.comment.slice(0, 200)}`,
             delayType: "continuation",
           });
+        } else if (reworkTarget === "escalated" && this.postComment !== undefined) {
+          const maxRework = stage.type === "gate" ? (stage.maxRework ?? 0) : 0;
+          try {
+            await this.postComment(
+              issue.id,
+              `Ensemble review: max rework attempts (${maxRework}) exceeded. Escalating for manual review.`,
+            );
+          } catch {
+            // Comment posting is best-effort — don't fail on it.
+          }
         }
       }
     } catch {
