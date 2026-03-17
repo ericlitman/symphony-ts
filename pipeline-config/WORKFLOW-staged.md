@@ -5,6 +5,7 @@ tracker:
   project_slug: 1fa66498be91
   active_states:
     - Todo
+    - In Progress
   terminal_states:
     - Done
     - Cancelled
@@ -47,11 +48,17 @@ hooks:
     echo "Workspace setup complete."
   before_run: |
     set -euo pipefail
-    echo "Syncing workspace with upstream main..."
-    git fetch origin main
-    if ! git rebase origin/main 2>/dev/null; then
-      echo "WARNING: Rebase failed, aborting rebase" >&2
-      git rebase --abort
+    echo "Syncing workspace with upstream..."
+    git fetch origin
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+      echo "On $CURRENT_BRANCH — rebasing onto latest..."
+      if ! git rebase origin/main 2>/dev/null; then
+        echo "WARNING: Rebase failed, aborting rebase" >&2
+        git rebase --abort
+      fi
+    else
+      echo "On feature branch $CURRENT_BRANCH — skipping rebase, fetch only."
     fi
     echo "Workspace synced."
   timeout_ms: 120000
@@ -62,6 +69,47 @@ server:
 observability:
   dashboard_enabled: true
   refresh_ms: 5000
+
+stages:
+  initial_stage: investigate
+
+  investigate:
+    type: agent
+    runner: claude-code
+    model: claude-sonnet-4-5
+    max_turns: 8
+    on_complete: implement
+
+  implement:
+    type: agent
+    runner: claude-code
+    model: claude-sonnet-4-5
+    max_turns: 30
+    on_complete: review
+
+  review:
+    type: gate
+    gate_type: ensemble
+    max_rework: 3
+    reviewers:
+      - runner: gemini
+        model: gemini-2.5-pro
+        role: adversarial-reviewer
+      - runner: gemini
+        model: gemini-2.5-pro
+        role: security-reviewer
+    on_approve: merge
+    on_rework: implement
+
+  merge:
+    type: agent
+    runner: claude-code
+    model: claude-sonnet-4-5
+    max_turns: 5
+    on_complete: done
+
+  done:
+    type: terminal
 ---
 
 You are running in headless/unattended mode. Do NOT use interactive skills, slash commands, or plan mode. Do not prompt for user input. Complete your work autonomously.
@@ -70,9 +118,9 @@ Implement only what your task specifies. If you encounter missing functionality 
 
 Never hardcode localhost or 127.0.0.1. Use the $BASE_URL environment variable for all URL references. Set BASE_URL=localhost:<port> during local development.
 
-# Implementation: {{ issue.identifier }} — {{ issue.title }}
+# {{ issue.identifier }} — {{ issue.title }}
 
-You are implementing Linear issue {{ issue.identifier }}.
+You are working on Linear issue {{ issue.identifier }}.
 
 ## Issue Description
 
@@ -81,6 +129,20 @@ You are implementing Linear issue {{ issue.identifier }}.
 {% if issue.labels.size > 0 %}
 Labels: {{ issue.labels | join: ", " }}
 {% endif %}
+
+{% if stageName == "investigate" %}
+## Stage: Investigation
+You are in the INVESTIGATE stage. Your job is to analyze the issue and create an implementation plan.
+- Read the codebase to understand existing patterns and architecture
+- Identify which files need to change and what the approach should be
+- Post a comment on the Linear issue (via `gh`) with your investigation findings and proposed implementation plan
+- Do NOT implement code, create branches, or open PRs in this stage — investigation only
+- When you have completed your investigation and posted your findings, output the exact text `[STAGE_COMPLETE]` as the very last line of your final message.
+{% endif %}
+
+{% if stageName == "implement" %}
+## Stage: Implementation
+You are in the IMPLEMENT stage. An investigation was done in the previous stage — check issue comments for the plan.
 
 ## Implementation Steps
 
@@ -92,6 +154,17 @@ Labels: {{ issue.labels | join: ", " }}
 6. Commit your changes with message format: `feat({{ issue.identifier }}): <description>`.
 7. Open a PR via `gh pr create` with the issue description in the PR body.
 8. Link the PR to the Linear issue by including `{{ issue.identifier }}` in the PR title or body.
+9. When you have opened the PR and all verify commands pass, output the exact text `[STAGE_COMPLETE]` as the very last line of your final message.
+{% endif %}
+
+{% if stageName == "merge" %}
+## Stage: Merge
+You are in the MERGE stage. The PR has been reviewed and approved.
+- Merge the PR via `gh pr merge --squash --delete-branch`
+- Verify the merge succeeded on the main branch
+- Do NOT modify code in this stage
+- When you have successfully merged the PR, output the exact text `[STAGE_COMPLETE]` as the very last line of your final message.
+{% endif %}
 
 ## Scope Discipline
 
