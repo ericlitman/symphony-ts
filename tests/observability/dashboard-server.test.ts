@@ -295,6 +295,40 @@ describe("dashboard server", () => {
     stream.close();
   });
 
+  it("echoes the request body verbatim at POST /api/echo", async () => {
+    const server = await startDashboardServer({
+      port: 0,
+      host: createHost(),
+    });
+    servers.push(server);
+
+    const payload = { test: true, nested: { value: 42 }, items: [1, 2, 3] };
+    const response = await sendRequest(server.port, {
+      method: "POST",
+      path: "/api/echo",
+      body: JSON.stringify(payload),
+      headers: { "content-type": "application/json" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(response.body)).toEqual(payload);
+  });
+
+  it("rejects non-POST methods on /api/echo with 405", async () => {
+    const server = await startDashboardServer({
+      port: 0,
+      host: createHost(),
+    });
+    servers.push(server);
+
+    const response = await sendRequest(server.port, {
+      method: "GET",
+      path: "/api/echo",
+    });
+    expect(response.statusCode).toBe(405);
+    expect(response.headers.allow).toBe("POST");
+  });
+
   it("returns a plain 404 for undefined routes", async () => {
     const server = await startDashboardServer({
       port: 0,

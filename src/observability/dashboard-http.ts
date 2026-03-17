@@ -49,6 +49,21 @@ export async function readRequestBody(request: IncomingMessage): Promise<void> {
   });
 }
 
+export async function readRequestBodyText(
+  request: IncomingMessage,
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    request.on("error", reject);
+    request.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    request.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+  });
+}
+
 export function isSnapshotTimeoutError(error: unknown): boolean {
   return (
     error instanceof Error &&

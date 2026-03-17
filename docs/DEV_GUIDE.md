@@ -1,6 +1,7 @@
 # Symphony-TS Developer Quick-Start Guide
 
 > For: developers with a Linear test project who want to run Symphony locally and start contributing.
+> Last updated: 2026-03-17
 
 ---
 
@@ -365,5 +366,16 @@ These fields take effect on the next poll tick without restarting Symphony:
 - Structured JSON logs are the primary observability surface
 - Launch with `--port 3000` to access the HTTP dashboard at `http://localhost:3000`
 - The dashboard serves an initial HTML snapshot, then stays current over `/api/v1/events`
+
+**HTTP dashboard API endpoints** (available when `--port` is set):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | HTML dashboard UI |
+| GET | `/api/v1/state` | Runtime snapshot as JSON |
+| GET | `/api/v1/events` | Server-sent events stream (live updates) |
+| POST | `/api/v1/refresh` | Trigger an immediate poll/reconcile cycle |
+| GET | `/api/v1/<issue-id>` | Details for a specific tracked issue |
+| POST | `/api/echo` | Echo any JSON body verbatim (useful for testing connectivity) |
 
 ---

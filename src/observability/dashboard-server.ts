@@ -15,6 +15,7 @@ import { toErrorMessage } from "./dashboard-format.js";
 import {
   isSnapshotTimeoutError,
   readRequestBody,
+  readRequestBodyText,
   readSnapshot,
   writeHtml,
   writeJson,
@@ -236,6 +237,18 @@ export function createDashboardRequestHandler(
         }
 
         await options.liveController.handleEventsRequest(request, response);
+        return;
+      }
+
+      if (url.pathname === "/api/echo") {
+        if (method !== "POST") {
+          writeMethodNotAllowed(response, ["POST"]);
+          return;
+        }
+
+        const text = await readRequestBodyText(request);
+        const payload: unknown = JSON.parse(text);
+        writeJson(response, 200, payload);
         return;
       }
 
