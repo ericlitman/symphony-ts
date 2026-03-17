@@ -194,8 +194,10 @@ export class AgentRunner {
         liveSession,
       });
 
-      // On fresh dispatch (not continuation), remove stale workspace for clean start
-      if (input.attempt === null) {
+      // On fresh dispatch with stages at the initial stage, remove stale workspace
+      // for a clean start.  For flat dispatch (no stages) or continuation attempts,
+      // preserve the workspace so interrupted work survives restarts.
+      if (input.attempt === null && input.stageName !== null && input.stageName === (this.config.stages?.initialStage ?? null)) {
         try {
           await this.workspaceManager.removeForIssue(issue.id);
         } catch {

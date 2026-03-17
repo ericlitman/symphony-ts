@@ -293,7 +293,7 @@ describe("AgentRunner", () => {
     });
   });
 
-  it("removes existing workspace on fresh dispatch (attempt === null)", async () => {
+  it("removes existing workspace on fresh dispatch at initial stage", async () => {
     const root = await createRoot();
     const workspacePath = join(root, "issue-1");
     const removeForIssue = vi.fn().mockResolvedValue(true);
@@ -301,6 +301,53 @@ describe("AgentRunner", () => {
       path: workspacePath,
       workspaceKey: "issue-1",
       createdNow: true,
+    });
+    const mockWorkspaceManager = {
+      root,
+      createForIssue,
+      removeForIssue,
+      resolveForIssue: vi.fn(),
+    };
+    const config = createConfig(root, "unused");
+    config.stages = {
+      initialStage: "investigate",
+      stages: {
+        investigate: { type: "agent", runner: null, model: null, prompt: null, maxTurns: 3, timeoutMs: null, concurrency: null, gateType: null, maxRework: null, reviewers: [], transitions: { onComplete: "done", onApprove: null, onRework: null } },
+        done: { type: "terminal", runner: null, model: null, prompt: null, maxTurns: null, timeoutMs: null, concurrency: null, gateType: null, maxRework: null, reviewers: [], transitions: { onComplete: null, onApprove: null, onRework: null } },
+      },
+    };
+    const runner = new AgentRunner({
+      config,
+      tracker: createTracker({
+        refreshStates: [
+          { id: "issue-1", identifier: "ABC-123", state: "Done" },
+        ],
+      }),
+      workspaceManager: mockWorkspaceManager as never,
+      createCodexClient: (input) =>
+        createStubCodexClient([], input, {
+          statuses: ["completed"],
+        }),
+    });
+
+    await runner.run({
+      issue: ISSUE_FIXTURE,
+      attempt: null,
+      stageName: "investigate",
+    });
+
+    expect(removeForIssue).toHaveBeenCalledWith("issue-1");
+    expect(createForIssue).toHaveBeenCalledWith("issue-1");
+  });
+
+  it("does NOT remove workspace on flat dispatch (no stages)", async () => {
+    const root = await createRoot();
+    const workspacePath = join(root, "issue-1");
+    const removeForIssue = vi.fn().mockResolvedValue(true);
+    const createForIssue = vi.fn().mockResolvedValue({
+      path: workspacePath,
+      workspaceKey: "issue-1",
+      createdNow: false,
     });
     const mockWorkspaceManager = {
       root,
@@ -327,12 +374,8 @@ describe("AgentRunner", () => {
       attempt: null,
     });
 
-    expect(removeForIssue).toHaveBeenCalledWith("issue-1");
+    expect(removeForIssue).not.toHaveBeenCalled();
     expect(createForIssue).toHaveBeenCalledWith("issue-1");
-    // removeForIssue should be called before createForIssue
-    const removeOrder = removeForIssue.mock.invocationCallOrder[0];
-    const createOrder = createForIssue.mock.invocationCallOrder[0];
-    expect(removeOrder).toBeLessThan(createOrder);
   });
 
   it("does NOT remove workspace on continuation (attempt !== null)", async () => {
