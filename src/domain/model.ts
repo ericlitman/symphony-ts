@@ -132,6 +132,8 @@ export interface OrchestratorState {
   completed: Set<string>;
   codexTotals: CodexTotals;
   codexRateLimits: CodexRateLimits;
+  issueStages: Record<string, string>;
+  issueReworkCounts: Record<string, number>;
 }
 
 export function normalizeIssueState(state: string): string {
@@ -183,5 +185,7 @@ export function createInitialOrchestratorState(input: {
       secondsRunning: 0,
     },
     codexRateLimits: null,
+    issueStages: {},
+    issueReworkCounts: {},
   };
 }

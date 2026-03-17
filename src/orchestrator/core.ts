@@ -3,6 +3,7 @@ import { validateDispatchConfig } from "../config/config-resolver.js";
 import type {
   DispatchValidationResult,
   ResolvedWorkflowConfig,
+  StageDefinition,
 } from "../config/types.js";
 import {
   type Issue,
@@ -17,6 +18,7 @@ import {
   addEndedSessionRuntime,
   applyCodexEventToOrchestratorState,
 } from "../logging/session-metrics.js";
+import type { EnsembleGateResult } from "./gate-handler.js";
 import type { IssueStateSnapshot, IssueTracker } from "../tracker/tracker.js";
 
 const CONTINUATION_RETRY_DELAY_MS = 1_000;
@@ -70,6 +72,8 @@ export interface OrchestratorCoreOptions {
   spawnWorker: (input: {
     issue: Issue;
     attempt: number | null;
+    stage: StageDefinition | null;
+    stageName: string | null;
   }) => Promise<SpawnWorkerResult> | SpawnWorkerResult;
   stopRunningIssue?: (input: {
     issueId: string;
@@ -77,6 +81,10 @@ export interface OrchestratorCoreOptions {
     cleanupWorkspace: boolean;
     reason: StopReason;
   }) => Promise<void> | void;
+  runEnsembleGate?: (input: {
+    issue: Issue;
+    stage: StageDefinition;
+  }) => Promise<EnsembleGateResult>;
   timerScheduler?: TimerScheduler;
   now?: () => Date;
 }
@@ -90,6 +98,8 @@ export class OrchestratorCore {
 
   private readonly stopRunningIssue?: OrchestratorCoreOptions["stopRunningIssue"];
 
+  private readonly runEnsembleGate?: OrchestratorCoreOptions["runEnsembleGate"];
+
   private readonly timerScheduler: TimerScheduler;
 
   private readonly now: () => Date;
@@ -101,6 +111,7 @@ export class OrchestratorCore {
     this.tracker = options.tracker;
     this.spawnWorker = options.spawnWorker;
     this.stopRunningIssue = options.stopRunningIssue;
+    this.runEnsembleGate = options.runEnsembleGate;
     this.timerScheduler = options.timerScheduler ?? defaultTimerScheduler();
     this.now = options.now ?? (() => new Date());
     this.state = createInitialOrchestratorState({
@@ -318,6 +329,14 @@ export class OrchestratorCore {
     );
 
     if (input.outcome === "normal") {
+      const transition = this.advanceStage(input.issueId);
+      if (transition === "completed") {
+        this.state.completed.add(input.issueId);
+        this.releaseClaim(input.issueId);
+        return null;
+      }
+
+      // Stage advanced or no stages configured — schedule continuation
       this.state.completed.add(input.issueId);
       return this.scheduleRetry(input.issueId, 1, {
         identifier: runningEntry.identifier,
@@ -335,6 +354,165 @@ export class OrchestratorCore {
         delayType: "failure",
       },
     );
+  }
+
+  /**
+   * Advance issue to next stage based on transition rules.
+   * Returns "completed" if the issue reached a terminal stage,
+   * "advanced" if it moved to the next stage, or "unchanged" if
+   * no stages are configured.
+   */
+  private advanceStage(
+    issueId: string,
+  ): "completed" | "advanced" | "unchanged" {
+    const stagesConfig = this.config.stages;
+    if (stagesConfig === null) {
+      return "unchanged";
+    }
+
+    const currentStageName = this.state.issueStages[issueId];
+    if (currentStageName === undefined) {
+      return "unchanged";
+    }
+
+    const currentStage = stagesConfig.stages[currentStageName];
+    if (currentStage === undefined) {
+      return "unchanged";
+    }
+
+    const nextStageName = currentStage.transitions.onComplete;
+    if (nextStageName === null) {
+      // No on_complete transition — treat as terminal
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      return "completed";
+    }
+
+    const nextStage = stagesConfig.stages[nextStageName];
+    if (nextStage === undefined) {
+      // Invalid target — treat as terminal
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      return "completed";
+    }
+
+    if (nextStage.type === "terminal") {
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      return "completed";
+    }
+
+    // Move to the next stage
+    this.state.issueStages[issueId] = nextStageName;
+    return "advanced";
+  }
+
+  /**
+   * Run ensemble gate: spawn reviewers, aggregate, transition.
+   * Called asynchronously from dispatchIssue for ensemble gates.
+   */
+  private async handleEnsembleGate(
+    issue: Issue,
+    stage: StageDefinition,
+  ): Promise<void> {
+    try {
+      const result = await this.runEnsembleGate!({ issue, stage });
+
+      if (result.aggregate === "pass") {
+        const nextStage = this.approveGate(issue.id);
+        if (nextStage !== null) {
+          this.scheduleRetry(issue.id, 1, {
+            identifier: issue.identifier,
+            error: null,
+            delayType: "continuation",
+          });
+        }
+      } else {
+        const reworkTarget = this.reworkGate(issue.id);
+        if (reworkTarget !== null && reworkTarget !== "escalated") {
+          this.scheduleRetry(issue.id, 1, {
+            identifier: issue.identifier,
+            error: `Ensemble review failed: ${result.comment.slice(0, 200)}`,
+            delayType: "continuation",
+          });
+        }
+      }
+    } catch {
+      // Gate handler failure — leave issue in gate state for manual intervention.
+    }
+  }
+
+  /**
+   * Handle gate approval: advance to on_approve target.
+   * Returns the next stage name, or null if already terminal/invalid.
+   */
+  approveGate(issueId: string): string | null {
+    const stagesConfig = this.config.stages;
+    if (stagesConfig === null) {
+      return null;
+    }
+
+    const currentStageName = this.state.issueStages[issueId];
+    if (currentStageName === undefined) {
+      return null;
+    }
+
+    const currentStage = stagesConfig.stages[currentStageName];
+    if (currentStage === undefined || currentStage.type !== "gate") {
+      return null;
+    }
+
+    const nextStageName = currentStage.transitions.onApprove;
+    if (nextStageName === null) {
+      return null;
+    }
+
+    this.state.issueStages[issueId] = nextStageName;
+    return nextStageName;
+  }
+
+  /**
+   * Handle gate rework: send issue back to rework target.
+   * Tracks rework count and escalates to terminal if max exceeded.
+   * Returns the rework target stage name, "escalated" if max rework
+   * exceeded, or null if no rework transition defined.
+   */
+  reworkGate(issueId: string): string | "escalated" | null {
+    const stagesConfig = this.config.stages;
+    if (stagesConfig === null) {
+      return null;
+    }
+
+    const currentStageName = this.state.issueStages[issueId];
+    if (currentStageName === undefined) {
+      return null;
+    }
+
+    const currentStage = stagesConfig.stages[currentStageName];
+    if (currentStage === undefined || currentStage.type !== "gate") {
+      return null;
+    }
+
+    const reworkTarget = currentStage.transitions.onRework;
+    if (reworkTarget === null) {
+      return null;
+    }
+
+    const maxRework = currentStage.maxRework ?? Number.POSITIVE_INFINITY;
+    const currentCount = this.state.issueReworkCounts[issueId] ?? 0;
+
+    if (currentCount >= maxRework) {
+      // Exceeded max rework — escalate to completed/terminal
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      this.state.completed.add(issueId);
+      this.releaseClaim(issueId);
+      return "escalated";
+    }
+
+    this.state.issueReworkCounts[issueId] = currentCount + 1;
+    this.state.issueStages[issueId] = reworkTarget;
+    return reworkTarget;
   }
 
   onCodexEvent(input: {
@@ -411,8 +589,43 @@ export class OrchestratorCore {
     issue: Issue,
     attempt: number | null,
   ): Promise<boolean> {
+    const stagesConfig = this.config.stages;
+    let stage: StageDefinition | null = null;
+    let stageName: string | null = null;
+
+    if (stagesConfig !== null) {
+      stageName =
+        this.state.issueStages[issue.id] ?? stagesConfig.initialStage;
+      stage = stagesConfig.stages[stageName] ?? null;
+
+      if (stage !== null && stage.type === "terminal") {
+        this.state.completed.add(issue.id);
+        this.releaseClaim(issue.id);
+        delete this.state.issueStages[issue.id];
+        delete this.state.issueReworkCounts[issue.id];
+        return false;
+      }
+
+      if (stage !== null && stage.type === "gate") {
+        this.state.issueStages[issue.id] = stageName;
+
+        if (
+          stage.gateType === "ensemble" &&
+          this.runEnsembleGate !== undefined
+        ) {
+          // Fire ensemble gate asynchronously — resolve transitions on completion.
+          void this.handleEnsembleGate(issue, stage);
+        }
+        // Human gates (or ensemble gates without handler): stay in gate state.
+        return false;
+      }
+
+      // Track the issue's current stage
+      this.state.issueStages[issue.id] = stageName;
+    }
+
     try {
-      const spawned = await this.spawnWorker({ issue, attempt });
+      const spawned = await this.spawnWorker({ issue, attempt, stage, stageName });
       this.state.running[issue.id] = {
         ...createEmptyLiveSession(),
         issue,

@@ -167,7 +167,7 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
       now: this.now,
       timerScheduler,
       spawnWorker: async ({ issue, attempt }) =>
-        this.spawnWorkerExecution(issue, attempt),
+        this.spawnWorkerExecution(issue, attempt),  // stage/stageName available but not used by runtime-host yet
       stopRunningIssue: async (input) => {
         await this.stopWorkerExecution(input.issueId, {
           issueId: input.issueId,

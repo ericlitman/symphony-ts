@@ -268,6 +268,11 @@ function createConfig(
       refreshMs: 1_000,
       renderIntervalMs: 16,
     },
+    runner: {
+      kind: "codex",
+      model: null,
+    },
+    stages: null,
     ...overrides,
   };
 }

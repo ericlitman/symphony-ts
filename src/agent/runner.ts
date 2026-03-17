@@ -8,6 +8,8 @@ import {
 } from "../codex/app-server-client.js";
 import { createLinearGraphqlDynamicTool } from "../codex/linear-graphql-tool.js";
 import type { ResolvedWorkflowConfig } from "../config/types.js";
+import { createRunnerFromConfig, isAiSdkRunner } from "../runners/factory.js";
+import type { RunnerKind } from "../runners/types.js";
 import {
   type Issue,
   type LiveSession,
@@ -149,7 +151,11 @@ export class AgentRunner {
         hooks: this.hooks,
       });
     this.createCodexClient =
-      options.createCodexClient ?? createDefaultCodexClient;
+      options.createCodexClient ??
+      createDefaultClientFactory(
+        options.config.runner.kind,
+        options.config.runner.model,
+      );
     this.fetchFn = options.fetchFn;
     this.onEvent = options.onEvent;
   }
@@ -407,6 +413,24 @@ async function cleanupWorkspaceArtifacts(workspacePath: string): Promise<void> {
     force: true,
     recursive: true,
   });
+}
+
+function createDefaultClientFactory(
+  runnerKind: string,
+  runnerModel: string | null = null,
+): (input: AgentRunnerCodexClientFactoryInput) => AgentRunnerCodexClient {
+  const kind = runnerKind as RunnerKind;
+
+  if (isAiSdkRunner(kind)) {
+    return (input) =>
+      createRunnerFromConfig({
+        config: { kind, model: runnerModel },
+        cwd: input.cwd,
+        onEvent: input.onEvent,
+      });
+  }
+
+  return createDefaultCodexClient;
 }
 
 function createDefaultCodexClient(
