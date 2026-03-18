@@ -451,10 +451,11 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
       await this.workspaceManager.removeForIssue(execution.issueId);
     }
 
+    const lastTurnMessage = execution.lastResult?.lastTurn?.message;
     const agentMessage =
-      execution.lastResult?.lastTurn?.message ??
-      execution.lastResult?.liveSession.lastCodexMessage ??
-      undefined;
+      (lastTurnMessage !== null && lastTurnMessage !== undefined && lastTurnMessage !== ""
+        ? lastTurnMessage
+        : execution.lastResult?.liveSession?.lastCodexMessage) ?? undefined;
 
     this.orchestrator.onWorkerExit({
       issueId: execution.issueId,

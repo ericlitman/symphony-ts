@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   ResolvedWorkflowConfig,
@@ -224,6 +224,91 @@ describe("failure signal routing in onWorkerExit", () => {
     });
     expect(orchestrator.getState().issueReworkCounts["1"]).toBe(2);
   });
+
+  it("calls updateIssueState on spec failure when escalationState is configured", async () => {
+    const updateIssueState = vi.fn().mockResolvedValue(undefined);
+    const postComment = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = createStagedOrchestrator({
+      escalationState: "Blocked",
+      updateIssueState,
+      postComment,
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      agentMessage: "[STAGE_FAILED: spec]",
+    });
+
+    // Allow async side effects to fire
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(updateIssueState).toHaveBeenCalledWith("1", "ISSUE-1", "Blocked");
+    expect(postComment).toHaveBeenCalledWith(
+      "1",
+      expect.stringContaining("spec failure"),
+    );
+  });
+
+  it("calls updateIssueState on review escalation when escalationState is configured", async () => {
+    const updateIssueState = vi.fn().mockResolvedValue(undefined);
+    const postComment = vi.fn().mockResolvedValue(undefined);
+
+    const base = createGateWorkflowConfig();
+    const stages: StagesConfig = {
+      ...base,
+      stages: {
+        ...base.stages,
+        review: { ...base.stages.review!, maxRework: 0 },
+      },
+    };
+
+    const orchestrator = createStagedOrchestrator({
+      stages,
+      escalationState: "Blocked",
+      updateIssueState,
+      postComment,
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      agentMessage: "[STAGE_FAILED: review]",
+    });
+
+    // Allow async side effects to fire
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(updateIssueState).toHaveBeenCalledWith("1", "ISSUE-1", "Blocked");
+    expect(postComment).toHaveBeenCalledWith(
+      "1",
+      expect.stringContaining("max rework"),
+    );
+  });
+
+  it("does not call updateIssueState when escalationState is null", async () => {
+    const updateIssueState = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = createStagedOrchestrator({
+      escalationState: null,
+      updateIssueState,
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      agentMessage: "[STAGE_FAILED: spec]",
+    });
+
+    // Allow async side effects to fire
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(updateIssueState).not.toHaveBeenCalled();
+  });
 });
 
 // --- Helpers ---
@@ -231,11 +316,15 @@ describe("failure signal routing in onWorkerExit", () => {
 function createStagedOrchestrator(overrides?: {
   stages?: StagesConfig | null;
   candidates?: Issue[];
+  escalationState?: string | null;
+  updateIssueState?: OrchestratorCoreOptions["updateIssueState"];
+  postComment?: OrchestratorCoreOptions["postComment"];
   onSpawn?: (input: {
     issue: Issue;
     attempt: number | null;
     stage: StageDefinition | null;
     stageName: string | null;
+    reworkCount: number;
   }) => void;
 }) {
   const stages = overrides?.stages !== undefined
@@ -249,7 +338,10 @@ function createStagedOrchestrator(overrides?: {
   });
 
   const options: OrchestratorCoreOptions = {
-    config: createConfig({ stages }),
+    config: createConfig({
+      stages,
+      escalationState: overrides?.escalationState,
+    }),
     tracker,
     spawnWorker: async (input) => {
       overrides?.onSpawn?.(input);
@@ -258,6 +350,12 @@ function createStagedOrchestrator(overrides?: {
         monitorHandle: { ref: "monitor-1" },
       };
     },
+    ...(overrides?.updateIssueState !== undefined
+      ? { updateIssueState: overrides.updateIssueState }
+      : {}),
+    ...(overrides?.postComment !== undefined
+      ? { postComment: overrides.postComment }
+      : {}),
     now: () => new Date("2026-03-06T00:00:05.000Z"),
   };
 
@@ -420,6 +518,7 @@ function createTracker(input?: {
 
 function createConfig(overrides?: {
   stages?: StagesConfig | null;
+  escalationState?: string | null;
 }): ResolvedWorkflowConfig {
   return {
     workflowPath: "/tmp/WORKFLOW.md",
@@ -473,7 +572,7 @@ function createConfig(overrides?: {
       renderIntervalMs: 16,
     },
     stages: overrides?.stages !== undefined ? overrides.stages : null,
-    escalationState: null,
+    escalationState: overrides?.escalationState ?? null,
   };
 }
 

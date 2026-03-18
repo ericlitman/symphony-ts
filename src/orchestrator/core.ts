@@ -443,6 +443,11 @@ export class OrchestratorCore {
       this.releaseClaim(issueId);
       delete this.state.issueStages[issueId];
       delete this.state.issueReworkCounts[issueId];
+      void this.fireEscalationSideEffects(
+        issueId,
+        runningEntry.identifier,
+        "Agent reported unrecoverable spec failure. Escalating for manual review.",
+      );
       return null;
     }
 
@@ -515,23 +520,34 @@ export class OrchestratorCore {
     // Use the gate's rework logic (reuses reworkGate by temporarily setting stage)
     const savedStage = this.state.issueStages[issueId];
     this.state.issueStages[issueId] = gateName;
-    const reworkTarget = this.reworkGate(issueId);
+    let reworkTarget: string | "escalated" | null;
+    try {
+      reworkTarget = this.reworkGate(issueId);
+    } catch (err) {
+      this.state.issueStages[issueId] = savedStage;
+      throw err;
+    }
     if (reworkTarget === null) {
       // No rework target — restore and fall back to retry
-      this.state.issueStages[issueId] = savedStage!;
+      this.state.issueStages[issueId] = savedStage;
       return this.scheduleRetry(
         issueId,
         nextRetryAttempt(runningEntry.retryAttempt),
         {
           identifier: runningEntry.identifier,
-          error: "agent reported failure: review",
+          error: "agent reported failure: review (no rework target on downstream gate)",
           delayType: "failure",
         },
       );
     }
 
     if (reworkTarget === "escalated") {
-      // reworkGate already cleaned up state
+      // reworkGate already cleaned up state — fire escalation side effects
+      void this.fireEscalationSideEffects(
+        issueId,
+        runningEntry.identifier,
+        "Agent review failure: max rework attempts exceeded. Escalating for manual review.",
+      );
       return null;
     }
 
@@ -581,6 +597,31 @@ export class OrchestratorCore {
     }
 
     return null;
+  }
+
+  /**
+   * Fire escalation side effects (updateIssueState + postComment).
+   * Best-effort: failures are logged, not propagated.
+   */
+  private async fireEscalationSideEffects(
+    issueId: string,
+    issueIdentifier: string,
+    comment: string,
+  ): Promise<void> {
+    if (this.config.escalationState !== null && this.updateIssueState !== undefined) {
+      try {
+        await this.updateIssueState(issueId, issueIdentifier, this.config.escalationState);
+      } catch (err) {
+        console.warn(`[orchestrator] Failed to update escalation state for ${issueIdentifier}:`, err);
+      }
+    }
+    if (this.postComment !== undefined) {
+      try {
+        await this.postComment(issueId, comment);
+      } catch (err) {
+        console.warn(`[orchestrator] Failed to post escalation comment for ${issueIdentifier}:`, err);
+      }
+    }
   }
 
   /**
