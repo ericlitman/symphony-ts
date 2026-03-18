@@ -91,7 +91,7 @@ export function createWorkpadSyncDynamicTool(
 
       try {
         if (normalized.comment_id !== undefined) {
-          await executeGraphql(
+          const response = await executeGraphql(
             endpoint,
             options.apiKey,
             networkTimeoutMs,
@@ -99,6 +99,22 @@ export function createWorkpadSyncDynamicTool(
             COMMENT_UPDATE_MUTATION,
             { commentId: normalized.comment_id, body },
           );
+          const update = response.commentUpdate;
+          if (
+            update === null ||
+            typeof update !== "object" ||
+            Array.isArray(update) ||
+            (update as Record<string, unknown>).success !== true
+          ) {
+            return {
+              success: false,
+              error: {
+                code: "linear_response_malformed",
+                message: "Linear commentUpdate did not return success.",
+                details: response,
+              },
+            };
+          }
           return {
             success: true,
             comment_id: normalized.comment_id,

@@ -307,6 +307,81 @@ describe("createWorkpadSyncDynamicTool", () => {
       "https://custom.linear.dev/graphql",
     );
   });
+
+  it("returns error when commentCreate has no comment field", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: {
+          commentCreate: {
+            success: true,
+            // no comment field
+          },
+        },
+      }),
+    );
+    const tool = createWorkpadSyncDynamicTool({
+      apiKey: "linear-token",
+      fetchFn,
+    });
+    const result = await tool.execute({
+      issue_id: "issue-1",
+      file_path: workpadPath,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "linear_response_malformed" },
+    });
+  });
+
+  it("returns error when commentCreate returns empty comment id", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: {
+          commentCreate: {
+            success: true,
+            comment: { id: "" },
+          },
+        },
+      }),
+    );
+    const tool = createWorkpadSyncDynamicTool({
+      apiKey: "linear-token",
+      fetchFn,
+    });
+    const result = await tool.execute({
+      issue_id: "issue-1",
+      file_path: workpadPath,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "linear_response_malformed" },
+    });
+  });
+
+  it("returns error when commentUpdate returns success false", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: {
+          commentUpdate: {
+            success: false,
+          },
+        },
+      }),
+    );
+    const tool = createWorkpadSyncDynamicTool({
+      apiKey: "linear-token",
+      fetchFn,
+    });
+    const result = await tool.execute({
+      issue_id: "issue-1",
+      file_path: workpadPath,
+      comment_id: "existing-comment-id",
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: { code: "linear_response_malformed" },
+    });
+  });
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
