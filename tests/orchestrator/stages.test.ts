@@ -463,6 +463,36 @@ describe("updateIssueState integration", () => {
     // updateIssueState should NOT have been called for the terminal stage
     expect(updateIssueState).not.toHaveBeenCalled();
   });
+
+  it("calls updateIssueState when gate approves to terminal stage with linearState", async () => {
+    const updateIssueState = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = createStagedOrchestrator({
+      stages: createGateToTerminalConfigWithLinearState(),
+      updateIssueState,
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({ issueId: "1", outcome: "normal" });
+    expect(orchestrator.getState().issueStages["1"]).toBe("review");
+
+    // Approve the gate — sets issue to "done" (terminal with linearState "Done")
+    const nextStage = orchestrator.approveGate("1");
+    expect(nextStage).toBe("done");
+    expect(orchestrator.getState().issueStages["1"]).toBe("done");
+
+    // Trigger the continuation so dispatchIssue hits the terminal short-circuit
+    const retryResult = await orchestrator.onRetryTimer("1");
+    expect(retryResult.dispatched).toBe(false);
+
+    // Wait for the async updateIssueState call to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Should have been called twice: once for dispatch ("In Progress") and once for terminal ("Done")
+    expect(orchestrator.getState().completed.has("1")).toBe(true);
+    expect(updateIssueState).toHaveBeenCalledWith("1", "ISSUE-1", "In Progress");
+    expect(updateIssueState).toHaveBeenCalledWith("1", "ISSUE-1", "Done");
+  });
 });
 
 // --- Helpers ---
@@ -853,6 +883,64 @@ function createGateWorkflowConfig(): StagesConfig {
         reviewers: [],
         transitions: { onComplete: null, onApprove: null, onRework: null },
         linearState: null,
+      },
+    },
+  };
+}
+
+function createGateToTerminalConfigWithLinearState(): StagesConfig {
+  return {
+    initialStage: "implement",
+    stages: {
+      implement: {
+        type: "agent",
+        runner: "claude-code",
+        model: "claude-sonnet-4-5",
+        prompt: "implement.liquid",
+        maxTurns: 30,
+        timeoutMs: null,
+        concurrency: null,
+        gateType: null,
+        maxRework: null,
+        reviewers: [],
+        transitions: {
+          onComplete: "review",
+          onApprove: null,
+          onRework: null,
+        },
+        linearState: "In Progress",
+      },
+      review: {
+        type: "gate",
+        runner: null,
+        model: null,
+        prompt: null,
+        maxTurns: null,
+        timeoutMs: null,
+        concurrency: null,
+        gateType: "ensemble",
+        maxRework: 3,
+        reviewers: [],
+        transitions: {
+          onComplete: null,
+          onApprove: "done",
+          onRework: "implement",
+        },
+        linearState: "In Review",
+      },
+      done: {
+        type: "terminal",
+        runner: null,
+        model: null,
+        prompt: null,
+        maxTurns: null,
+        timeoutMs: null,
+        concurrency: null,
+        gateType: null,
+        maxRework: null,
+        reviewers: [],
+        transitions: { onComplete: null, onApprove: null, onRework: null },
+        linearState: "Done",
       },
     },
   };

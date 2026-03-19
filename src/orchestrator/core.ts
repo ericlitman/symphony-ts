@@ -902,6 +902,12 @@ export class OrchestratorCore {
         this.releaseClaim(issue.id);
         delete this.state.issueStages[issue.id];
         delete this.state.issueReworkCounts[issue.id];
+        // Fire linearState update for the terminal stage (e.g., move to "Done")
+        if (stage.linearState !== null && this.updateIssueState !== undefined) {
+          void this.updateIssueState(issue.id, issue.identifier, stage.linearState).catch((err) => {
+            console.warn(`[orchestrator] Failed to update terminal state for ${issue.identifier}:`, err);
+          });
+        }
         return false;
       }
 
