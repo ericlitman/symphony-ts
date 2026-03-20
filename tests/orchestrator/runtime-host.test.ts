@@ -282,6 +282,213 @@ describe("OrchestratorRuntimeHost", () => {
       }),
     );
   });
+
+  it("emits stage_completed event on normal worker exit with token and turn fields", async () => {
+    const tracker = createTracker();
+    const fakeRunner = new FakeAgentRunner();
+    const entries: StructuredLogEntry[] = [];
+    const logger = new StructuredLogger([
+      {
+        write(entry) {
+          entries.push(entry);
+        },
+      },
+    ]);
+    const host = new OrchestratorRuntimeHost({
+      config: createConfig(),
+      tracker,
+      logger,
+      createAgentRunner: ({ onEvent }) => {
+        fakeRunner.onEvent = onEvent;
+        return fakeRunner;
+      },
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    await host.pollOnce();
+    fakeRunner.resolve("1", {
+      issue: createIssue({ state: "In Progress" }),
+      workspace: {
+        path: "/tmp/workspaces/1",
+        workspaceKey: "1",
+        createdNow: true,
+      },
+      runAttempt: {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        attempt: null,
+        workspacePath: "/tmp/workspaces/1",
+        startedAt: "2026-03-06T00:00:00.000Z",
+        status: "succeeded",
+      },
+      liveSession: {
+        sessionId: "thread-1-turn-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        codexAppServerPid: "1001",
+        lastCodexEvent: "turn_completed",
+        lastCodexTimestamp: "2026-03-06T00:00:02.000Z",
+        lastCodexMessage: "done",
+        codexInputTokens: 100,
+        codexOutputTokens: 50,
+        codexTotalTokens: 150,
+        codexCacheReadTokens: 10,
+        codexCacheWriteTokens: 5,
+        codexNoCacheTokens: 0,
+        codexReasoningTokens: 20,
+        lastReportedInputTokens: 100,
+        lastReportedOutputTokens: 50,
+        lastReportedTotalTokens: 150,
+        turnCount: 3,
+      },
+      turnsCompleted: 3,
+      lastTurn: null,
+      rateLimits: null,
+    });
+    await host.waitForIdle();
+
+    const stageCompletedEntry = entries.find(
+      (e) => e.event === "stage_completed",
+    );
+    expect(stageCompletedEntry).toBeDefined();
+    expect(stageCompletedEntry).toMatchObject({
+      event: "stage_completed",
+      level: "info",
+      issue_id: "1",
+      issue_identifier: "ISSUE-1",
+      session_id: "thread-1-turn-1",
+      stage_name: null,
+      input_tokens: 100,
+      output_tokens: 50,
+      total_tokens: 150,
+      cache_read_tokens: 10,
+      cache_write_tokens: 5,
+      reasoning_tokens: 20,
+      turns_used: 3,
+      duration_ms: 5000,
+      outcome: "completed",
+    });
+  });
+
+  it("emits stage_completed event on abnormal worker exit with outcome failed", async () => {
+    const tracker = createTracker();
+    const fakeRunner = new FakeAgentRunner();
+    const entries: StructuredLogEntry[] = [];
+    const logger = new StructuredLogger([
+      {
+        write(entry) {
+          entries.push(entry);
+        },
+      },
+    ]);
+    const host = new OrchestratorRuntimeHost({
+      config: createConfig(),
+      tracker,
+      logger,
+      createAgentRunner: ({ onEvent }) => {
+        fakeRunner.onEvent = onEvent;
+        return fakeRunner;
+      },
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    await host.pollOnce();
+    fakeRunner.reject("1", new Error("something went wrong"));
+    await host.waitForIdle();
+
+    const stageCompletedEntry = entries.find(
+      (e) => e.event === "stage_completed",
+    );
+    expect(stageCompletedEntry).toBeDefined();
+    expect(stageCompletedEntry).toMatchObject({
+      event: "stage_completed",
+      level: "info",
+      issue_id: "1",
+      issue_identifier: "ISSUE-1",
+      stage_name: null,
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      turns_used: 0,
+      duration_ms: 0,
+      outcome: "failed",
+    });
+  });
+
+  it("emits stage_completed with correct stage_name when stages are configured", async () => {
+    const tracker = createTracker();
+    const fakeRunner = new FakeAgentRunner();
+    const entries: StructuredLogEntry[] = [];
+    const logger = new StructuredLogger([
+      {
+        write(entry) {
+          entries.push(entry);
+        },
+      },
+    ]);
+    const host = new OrchestratorRuntimeHost({
+      config: createStagedConfig(),
+      tracker,
+      logger,
+      createAgentRunner: ({ onEvent }) => {
+        fakeRunner.onEvent = onEvent;
+        return fakeRunner;
+      },
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    await host.pollOnce();
+    fakeRunner.resolve("1", {
+      issue: createIssue({ state: "In Progress" }),
+      workspace: {
+        path: "/tmp/workspaces/1",
+        workspaceKey: "1",
+        createdNow: true,
+      },
+      runAttempt: {
+        issueId: "1",
+        issueIdentifier: "ISSUE-1",
+        attempt: null,
+        workspacePath: "/tmp/workspaces/1",
+        startedAt: "2026-03-06T00:00:00.000Z",
+        status: "succeeded",
+      },
+      liveSession: {
+        sessionId: "thread-1-turn-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        codexAppServerPid: "1001",
+        lastCodexEvent: "turn_completed",
+        lastCodexTimestamp: "2026-03-06T00:00:02.000Z",
+        lastCodexMessage: "done",
+        codexInputTokens: 30,
+        codexOutputTokens: 20,
+        codexTotalTokens: 50,
+        codexCacheReadTokens: 0,
+        codexCacheWriteTokens: 0,
+        codexNoCacheTokens: 0,
+        codexReasoningTokens: 0,
+        lastReportedInputTokens: 30,
+        lastReportedOutputTokens: 20,
+        lastReportedTotalTokens: 50,
+        turnCount: 2,
+      },
+      turnsCompleted: 2,
+      lastTurn: null,
+      rateLimits: null,
+    });
+    await host.waitForIdle();
+
+    const stageCompletedEntry = entries.find(
+      (e) => e.event === "stage_completed",
+    );
+    expect(stageCompletedEntry).toBeDefined();
+    expect(stageCompletedEntry).toMatchObject({
+      event: "stage_completed",
+      stage_name: "investigate",
+      turns_used: 2,
+    });
+  });
 });
 
 class FakeAgentRunner {
@@ -342,6 +549,15 @@ class FakeAgentRunner {
     }
     this.runs.delete(issueId);
     run.resolve(result);
+  }
+
+  reject(issueId: string, error: Error): void {
+    const run = this.runs.get(issueId);
+    if (run === undefined) {
+      throw new Error(`No fake run registered for ${issueId}.`);
+    }
+    this.runs.delete(issueId);
+    run.reject(error);
   }
 }
 
@@ -442,5 +658,34 @@ function createConfig(): ResolvedWorkflowConfig {
     },
     stages: null,
     escalationState: null,
+  };
+}
+
+function createStagedConfig(): ResolvedWorkflowConfig {
+  return {
+    ...createConfig(),
+    stages: {
+      initialStage: "investigate",
+      stages: {
+        investigate: {
+          type: "agent",
+          runner: null,
+          model: null,
+          prompt: null,
+          maxTurns: null,
+          timeoutMs: null,
+          concurrency: null,
+          gateType: null,
+          maxRework: null,
+          reviewers: [],
+          transitions: {
+            onComplete: null,
+            onApprove: null,
+            onRework: null,
+          },
+          linearState: null,
+        },
+      },
+    },
   };
 }

@@ -24,6 +24,8 @@ export const LOG_FIELDS = [
   "reasoning_tokens",
   "rate_limit_requests_remaining",
   "rate_limit_tokens_remaining",
+  "stage_name",
+  "turns_used",
   "duration_ms",
   "seconds_running",
   "error_code",
