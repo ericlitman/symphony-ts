@@ -667,8 +667,10 @@ export async function startRuntimeService(
 
   const runPollCycle = async () => {
     try {
+      const pollStart = Date.now();
       const result = await runtimeHost.pollOnce();
-      await logPollCycleResult(logger, result);
+      const durationMs = Date.now() - pollStart;
+      await logPollCycleResult(logger, result, durationMs);
       scheduleNextPoll();
     } catch (error) {
       await logger.error("runtime_poll_failed", toErrorMessage(error), {
@@ -834,6 +836,7 @@ export async function startRuntimeService(
 async function logPollCycleResult(
   logger: StructuredLogger,
   result: Awaited<ReturnType<OrchestratorRuntimeHost["pollOnce"]>>,
+  durationMs: number,
 ): Promise<void> {
   if (!result.validation.ok) {
     await logger.error(
@@ -866,6 +869,13 @@ async function logPollCycleResult(
       },
     );
   }
+
+  await logger.info("poll_tick_completed", "Poll tick completed.", {
+    dispatched_count: result.dispatchedIssueIds.length,
+    running_count: result.runningCount,
+    reconciled_stop_requests: result.stopRequests.length,
+    duration_ms: durationMs,
+  });
 }
 
 async function createRuntimeWorkflowWatcher(input: {

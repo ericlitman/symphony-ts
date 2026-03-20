@@ -27,6 +27,7 @@ export type RunAttemptPhase = (typeof RUN_ATTEMPT_PHASES)[number];
 
 export const ORCHESTRATOR_EVENTS = [
   "poll_tick",
+  "poll_tick_completed",
   "worker_exit_normal",
   "worker_exit_abnormal",
   "stage_completed",
