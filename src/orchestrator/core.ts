@@ -48,6 +48,7 @@ export interface PollTickResult {
   stopRequests: StopRequest[];
   trackerFetchFailed: boolean;
   reconciliationFetchFailed: boolean;
+  runningCount: number;
 }
 
 export interface RetryTimerResult {
@@ -225,6 +226,7 @@ export class OrchestratorCore {
         stopRequests: reconcileResult.stopRequests,
         trackerFetchFailed: false,
         reconciliationFetchFailed: reconcileResult.reconciliationFetchFailed,
+        runningCount: Object.keys(this.state.running).length,
       };
     }
 
@@ -238,6 +240,7 @@ export class OrchestratorCore {
         stopRequests: reconcileResult.stopRequests,
         trackerFetchFailed: true,
         reconciliationFetchFailed: reconcileResult.reconciliationFetchFailed,
+        runningCount: Object.keys(this.state.running).length,
       };
     }
 
@@ -263,6 +266,7 @@ export class OrchestratorCore {
       stopRequests: reconcileResult.stopRequests,
       trackerFetchFailed: false,
       reconciliationFetchFailed: reconcileResult.reconciliationFetchFailed,
+      runningCount: Object.keys(this.state.running).length,
     };
   }
 

@@ -34,6 +34,9 @@ export const LOG_FIELDS = [
   "estimated_prompt_tokens",
   "workers_aborted",
   "timed_out",
+  "dispatched_count",
+  "running_count",
+  "reconciled_stop_requests",
 ] as const;
 
 export type LogField = (typeof LOG_FIELDS)[number];

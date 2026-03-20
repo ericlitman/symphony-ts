@@ -877,6 +877,78 @@ describe("startRuntimeService shutdown", () => {
   });
 });
 
+describe("startRuntimeService poll_tick_completed", () => {
+  it("logs poll_tick_completed event after a successful poll", async () => {
+    const tracker = createTracker({ candidates: [] });
+    const entries: StructuredLogEntry[] = [];
+    const logger = new StructuredLogger([
+      {
+        write(entry) {
+          entries.push(entry);
+        },
+      },
+    ]);
+
+    const service = await startRuntimeService({
+      config: createConfig(),
+      tracker,
+      logger,
+      workflowWatcher: null,
+      runtimeHost: new OrchestratorRuntimeHost({
+        config: createConfig(),
+        tracker,
+        logger,
+        agentRunner: new FakeAgentRunner(),
+        now: () => new Date("2026-03-06T00:00:05.000Z"),
+      }),
+    });
+
+    await service.runtimeHost.flushEvents();
+    await service.shutdown();
+
+    const tickEntry = entries.find((e) => e.event === "poll_tick_completed");
+    expect(tickEntry).toBeDefined();
+    expect(tickEntry).toHaveProperty("dispatched_count");
+    expect(tickEntry).toHaveProperty("running_count");
+    expect(tickEntry).toHaveProperty("reconciled_stop_requests");
+    expect(typeof tickEntry?.duration_ms).toBe("number");
+  });
+
+  it("logs poll_tick_completed with dispatched_count reflecting newly dispatched issues", async () => {
+    const tracker = createTracker();
+    const entries: StructuredLogEntry[] = [];
+    const logger = new StructuredLogger([
+      {
+        write(entry) {
+          entries.push(entry);
+        },
+      },
+    ]);
+
+    const service = await startRuntimeService({
+      config: createConfig(),
+      tracker,
+      logger,
+      workflowWatcher: null,
+      runtimeHost: new OrchestratorRuntimeHost({
+        config: createConfig(),
+        tracker,
+        logger,
+        agentRunner: new FakeAgentRunner(),
+        now: () => new Date("2026-03-06T00:00:05.000Z"),
+      }),
+    });
+
+    await service.runtimeHost.flushEvents();
+    await service.shutdown();
+
+    const tickEntry = entries.find((e) => e.event === "poll_tick_completed");
+    expect(tickEntry).toBeDefined();
+    // One issue was dispatched in the initial poll tick
+    expect(tickEntry).toHaveProperty("dispatched_count", 1);
+  });
+});
+
 class FakeAgentRunner {
   onEvent: ((event: AgentRunnerEvent) => void) | undefined;
   readonly runs = new Map<
