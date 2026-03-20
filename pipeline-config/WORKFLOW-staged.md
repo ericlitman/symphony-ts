@@ -100,6 +100,24 @@ hooks:
       echo "On feature branch $CURRENT_BRANCH — skipping rebase, fetch only."
     fi
     echo "Workspace synced."
+  before_remove: |
+    set -uo pipefail
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    if [ -z "$BRANCH" ] || [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ] || [ "$BRANCH" = "HEAD" ]; then
+      exit 0
+    fi
+    echo "Cleaning up branch $BRANCH..."
+    # Close any open PR for this branch (also deletes the remote branch via --delete-branch)
+    PR_NUM=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+    if [ -n "$PR_NUM" ]; then
+      echo "Closing PR #$PR_NUM and deleting remote branch..."
+      gh pr close "$PR_NUM" --delete-branch 2>/dev/null || true
+    else
+      # No open PR — just delete the remote branch if it exists
+      echo "No open PR found, deleting remote branch..."
+      git push origin --delete "$BRANCH" 2>/dev/null || true
+    fi
+    echo "Cleanup complete."
   timeout_ms: 120000
 
 server:
