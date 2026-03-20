@@ -85,6 +85,7 @@ export interface RuntimeServiceHandle {
 interface WorkerExecution {
   issueId: string;
   issueIdentifier: string;
+  stageName: string | null;
   controller: AbortController;
   completion: Promise<void>;
   stopRequest: StopRequest | null;
@@ -389,6 +390,7 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
     const execution: WorkerExecution = {
       issueId: issue.id,
       issueIdentifier: issue.identifier,
+      stageName,
       controller,
       stopRequest: null,
       lastResult: null,
@@ -490,6 +492,32 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
         session_id: execution.lastResult?.liveSession.sessionId ?? null,
       },
     );
+
+    const liveSession = execution.lastResult?.liveSession;
+    const durationMs = execution.lastResult?.runAttempt?.startedAt
+      ? this.now().getTime() - new Date(execution.lastResult.runAttempt.startedAt).getTime()
+      : 0;
+    await this.logger?.log("info", "stage_completed", "Stage completed.", {
+      issue_id: execution.issueId,
+      issue_identifier: execution.issueIdentifier,
+      session_id: liveSession?.sessionId ?? null,
+      stage_name: execution.stageName,
+      input_tokens: liveSession?.codexInputTokens ?? 0,
+      output_tokens: liveSession?.codexOutputTokens ?? 0,
+      total_tokens: liveSession?.codexTotalTokens ?? 0,
+      ...(liveSession?.codexCacheReadTokens
+        ? { cache_read_tokens: liveSession.codexCacheReadTokens }
+        : {}),
+      ...(liveSession?.codexCacheWriteTokens
+        ? { cache_write_tokens: liveSession.codexCacheWriteTokens }
+        : {}),
+      ...(liveSession?.codexReasoningTokens
+        ? { reasoning_tokens: liveSession.codexReasoningTokens }
+        : {}),
+      turns_used: liveSession?.turnCount ?? 0,
+      duration_ms: durationMs,
+      outcome: input.outcome === "normal" ? "completed" : "failed",
+    });
 
     if (execution.stopRequest?.cleanupWorkspace === true) {
       await this.workspaceManager.removeForIssue(execution.issueId);

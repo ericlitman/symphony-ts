@@ -42,6 +42,7 @@ describe("domain model", () => {
       "poll_tick",
       "worker_exit_normal",
       "worker_exit_abnormal",
+      "stage_completed",
       "codex_update_event",
       "retry_timer_fired",
       "reconciliation_state_refresh",
