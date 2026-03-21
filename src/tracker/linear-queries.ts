@@ -135,3 +135,31 @@ export const LINEAR_CREATE_COMMENT_MUTATION = `
     }
   }
 `.trim();
+
+export const LINEAR_ISSUES_BY_LABELS_QUERY = `
+  query SymphonyIssuesByLabels(
+    $projectSlug: String!
+    $labelNames: [String!]!
+    $first: Int!
+    $relationFirst: Int!
+    $after: String
+  ) {
+    issues(
+      first: $first
+      after: $after
+      filter: {
+        project: { slugId: { eq: $projectSlug } }
+        labels: { name: { in: $labelNames } }
+      }
+      orderBy: createdAt
+    ) {
+      nodes {
+        ${ISSUE_FIELDS}
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`.trim();

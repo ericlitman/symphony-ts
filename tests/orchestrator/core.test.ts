@@ -332,6 +332,171 @@ describe("orchestrator core", () => {
       reason: "stall_timeout",
     });
   });
+
+  it("skips all dispatch when an open pipeline-halt issue exists", async () => {
+    const haltIssue = createIssue({
+      id: "halt-1",
+      identifier: "SYMPH-123",
+      title: "Main branch build broken",
+      state: "In Progress",
+      labels: ["pipeline-halt"],
+    });
+
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+      createIssue({ id: "2", identifier: "ISSUE-2", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchIssuesByLabels(labelNames: string[]) {
+        if (labelNames.includes("pipeline-halt")) {
+          return [haltIssue];
+        }
+        return [];
+      },
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    const result = await orchestrator.pollTick();
+
+    expect(result.validation.ok).toBe(true);
+    expect(result.dispatchedIssueIds).toEqual([]);
+    expect(Object.keys(orchestrator.getState().running)).toEqual([]);
+  });
+
+  it("dispatches normally when no pipeline-halt issue exists", async () => {
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+      createIssue({ id: "2", identifier: "ISSUE-2", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchIssuesByLabels() {
+        return [];
+      },
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    const result = await orchestrator.pollTick();
+
+    expect(result.validation.ok).toBe(true);
+    expect(result.dispatchedIssueIds).toEqual(["1", "2"]);
+    expect(Object.keys(orchestrator.getState().running)).toEqual(["1", "2"]);
+  });
+
+  it("dispatches normally when pipeline-halt issue is in terminal state", async () => {
+    const closedHaltIssue = createIssue({
+      id: "halt-1",
+      identifier: "SYMPH-123",
+      title: "Main branch build broken",
+      state: "Done",
+      labels: ["pipeline-halt"],
+    });
+
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+      createIssue({ id: "2", identifier: "ISSUE-2", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchIssuesByLabels(labelNames: string[]) {
+        if (labelNames.includes("pipeline-halt")) {
+          return [closedHaltIssue];
+        }
+        return [];
+      },
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    const result = await orchestrator.pollTick();
+
+    expect(result.validation.ok).toBe(true);
+    expect(result.dispatchedIssueIds).toEqual(["1", "2"]);
+    expect(Object.keys(orchestrator.getState().running)).toEqual(["1", "2"]);
+  });
+
+  it("continues dispatch when fetchIssuesByLabels throws an error", async () => {
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+      createIssue({ id: "2", identifier: "ISSUE-2", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchIssuesByLabels() {
+        throw new Error("Linear API error");
+      },
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    const result = await orchestrator.pollTick();
+
+    expect(result.validation.ok).toBe(true);
+    expect(result.dispatchedIssueIds).toEqual(["1", "2"]);
+    expect(Object.keys(orchestrator.getState().running)).toEqual(["1", "2"]);
+  });
+
+  it("dispatches normally when tracker does not implement fetchIssuesByLabels", async () => {
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+      createIssue({ id: "2", identifier: "ISSUE-2", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      // Note: fetchIssuesByLabels is not implemented (optional)
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    const result = await orchestrator.pollTick();
+
+    expect(result.validation.ok).toBe(true);
+    expect(result.dispatchedIssueIds).toEqual(["1", "2"]);
+    expect(Object.keys(orchestrator.getState().running)).toEqual(["1", "2"]);
+  });
 });
 
 describe("orchestrator core integration flows", () => {

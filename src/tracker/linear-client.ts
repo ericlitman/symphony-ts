@@ -12,6 +12,7 @@ import {
 import {
   LINEAR_CANDIDATE_ISSUES_QUERY,
   LINEAR_CREATE_COMMENT_MUTATION,
+  LINEAR_ISSUES_BY_LABELS_QUERY,
   LINEAR_ISSUES_BY_STATES_QUERY,
   LINEAR_ISSUE_STATES_BY_IDS_QUERY,
   LINEAR_ISSUE_UPDATE_MUTATION,
@@ -118,6 +119,19 @@ export class LinearTrackerClient implements IssueTracker {
     return this.fetchIssuePages(LINEAR_ISSUES_BY_STATES_QUERY, {
       projectSlug: this.requireProjectSlug(),
       stateNames,
+      first: this.pageSize,
+      relationFirst: this.pageSize,
+    });
+  }
+
+  async fetchIssuesByLabels(labelNames: string[]): Promise<Issue[]> {
+    if (labelNames.length === 0) {
+      return [];
+    }
+
+    return this.fetchIssuePages(LINEAR_ISSUES_BY_LABELS_QUERY, {
+      projectSlug: this.requireProjectSlug(),
+      labelNames,
       first: this.pageSize,
       relationFirst: this.pageSize,
     });

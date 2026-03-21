@@ -248,6 +248,42 @@ export class OrchestratorCore {
       };
     }
 
+    // Check for pipeline-halt before dispatching
+    if (this.tracker.fetchIssuesByLabels !== undefined) {
+      try {
+        const haltIssues = await this.tracker.fetchIssuesByLabels([
+          "pipeline-halt",
+        ]);
+        const terminalStates = toNormalizedStateSet(
+          this.config.tracker.terminalStates,
+        );
+        const openHaltIssue = haltIssues.find((haltIssue) => {
+          const normalizedState = normalizeIssueState(haltIssue.state);
+          return !terminalStates.has(normalizedState);
+        });
+
+        if (openHaltIssue) {
+          console.warn(
+            `[orchestrator] Pipeline halted: ${openHaltIssue.identifier} — ${openHaltIssue.title}. Skipping all dispatch.`,
+          );
+          return {
+            validation,
+            dispatchedIssueIds: [],
+            stopRequests: reconcileResult.stopRequests,
+            trackerFetchFailed: false,
+            reconciliationFetchFailed:
+              reconcileResult.reconciliationFetchFailed,
+            runningCount: Object.keys(this.state.running).length,
+          };
+        }
+      } catch (error) {
+        console.warn(
+          "[orchestrator] Failed to check for pipeline-halt issues. Continuing dispatch.",
+          error,
+        );
+      }
+    }
+
     const dispatchedIssueIds: string[] = [];
     for (const issue of sortIssuesForDispatch(issues)) {
       if (this.availableSlots() <= 0) {
