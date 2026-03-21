@@ -2702,7 +2702,11 @@ describe("fast-track label-based stage routing", () => {
             gateType: null,
             maxRework: null,
             reviewers: [],
-            transitions: { onComplete: "implement", onApprove: null, onRework: null },
+            transitions: {
+              onComplete: "implement",
+              onApprove: null,
+              onRework: null,
+            },
             linearState: null,
           },
           implement: {
@@ -2716,7 +2720,11 @@ describe("fast-track label-based stage routing", () => {
             gateType: null,
             maxRework: null,
             reviewers: [],
-            transitions: { onComplete: "done", onApprove: null, onRework: null },
+            transitions: {
+              onComplete: "done",
+              onApprove: null,
+              onRework: null,
+            },
             linearState: null,
           },
           done: {
@@ -2745,12 +2753,20 @@ describe("fast-track label-based stage routing", () => {
       config: createFastTrackConfig(),
       tracker: createTracker({
         candidates: [
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: ["trivial"],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2767,12 +2783,20 @@ describe("fast-track label-based stage routing", () => {
       config: createFastTrackConfig(),
       tracker: createTracker({
         candidates: [
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: [] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: [],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2791,12 +2815,20 @@ describe("fast-track label-based stage routing", () => {
       tracker: createTracker({
         candidates: [
           // label is already normalized to lowercase "trivial" (as linear-normalize.ts does)
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: ["trivial"],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2812,12 +2844,20 @@ describe("fast-track label-based stage routing", () => {
       config: createFastTrackConfig(),
       tracker: createTracker({
         candidates: [
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: ["trivial"],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2848,7 +2888,11 @@ describe("fast-track label-based stage routing", () => {
                   gateType: null,
                   maxRework: null,
                   reviewers: [],
-                  transitions: { onComplete: "done", onApprove: null, onRework: null },
+                  transitions: {
+                    onComplete: "done",
+                    onApprove: null,
+                    onRework: null,
+                  },
                   linearState: null,
                 },
               }),
@@ -2857,12 +2901,20 @@ describe("fast-track label-based stage routing", () => {
       },
       tracker: createTracker({
         candidates: [
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: ["trivial"],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2888,12 +2940,20 @@ describe("fast-track label-based stage routing", () => {
       },
       tracker: createTracker({
         candidates: [
-          createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+          createIssue({
+            id: "1",
+            identifier: "ISSUE-1",
+            state: "Todo",
+            labels: ["trivial"],
+          }),
         ],
       }),
       spawnWorker: async ({ stageName }) => {
         spawnedStageNames.push(stageName);
-        return { workerHandle: { pid: 1001 }, monitorHandle: { ref: "monitor-1" } };
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
       },
       now: () => new Date("2026-03-06T00:00:05.000Z"),
     });
@@ -2915,7 +2975,12 @@ describe("fast-track label-based stage routing", () => {
         config: createFastTrackConfig(),
         tracker: createTracker({
           candidates: [
-            createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo", labels: ["trivial"] }),
+            createIssue({
+              id: "1",
+              identifier: "ISSUE-1",
+              state: "Todo",
+              labels: ["trivial"],
+            }),
           ],
         }),
         spawnWorker: async () => ({
