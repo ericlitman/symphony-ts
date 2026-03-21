@@ -1759,9 +1759,7 @@ describe("execution history stage records", () => {
     });
 
     // issueExecutionHistory should have no entry for this issue
-    expect(
-      orchestrator.getState().issueExecutionHistory["1"],
-    ).toBeUndefined();
+    expect(orchestrator.getState().issueExecutionHistory["1"]).toBeUndefined();
   });
 });
 
