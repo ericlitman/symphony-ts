@@ -23,15 +23,13 @@ function createEvent(
 
 describe("extractToolNameFromRaw", () => {
   it("extracts tool name from params.toolName", () => {
-    expect(
-      extractToolNameFromRaw({ params: { toolName: "Read" } }),
-    ).toBe("Read");
+    expect(extractToolNameFromRaw({ params: { toolName: "Read" } })).toBe(
+      "Read",
+    );
   });
 
   it("extracts tool name from params.name", () => {
-    expect(
-      extractToolNameFromRaw({ params: { name: "Edit" } }),
-    ).toBe("Edit");
+    expect(extractToolNameFromRaw({ params: { name: "Edit" } })).toBe("Edit");
   });
 
   it("extracts tool name from params.tool.name", () => {
@@ -89,15 +87,15 @@ describe("buildActivityContext", () => {
   });
 
   it("extracts pattern for Glob tool", () => {
-    expect(
-      buildActivityContext("Glob", { pattern: "**/*.ts" }),
-    ).toBe("**/*.ts");
+    expect(buildActivityContext("Glob", { pattern: "**/*.ts" })).toBe(
+      "**/*.ts",
+    );
   });
 
   it("extracts pattern for Grep tool", () => {
-    expect(
-      buildActivityContext("Grep", { pattern: "extractToolName" }),
-    ).toBe("extractToolName");
+    expect(buildActivityContext("Grep", { pattern: "extractToolName" })).toBe(
+      "extractToolName",
+    );
   });
 
   it("truncates long Bash commands to ~60 chars", () => {
@@ -116,9 +114,7 @@ describe("buildActivityContext", () => {
   });
 
   it("returns null for unknown tools", () => {
-    expect(
-      buildActivityContext("UnknownTool", { some: "data" }),
-    ).toBeNull();
+    expect(buildActivityContext("UnknownTool", { some: "data" })).toBeNull();
   });
 
   it("returns null when input is not an object", () => {
@@ -237,7 +233,9 @@ describe("recent activity ring buffer", () => {
     );
     applyCodexEventToSession(
       session,
-      createEvent("approval_auto_approved", { raw: null as unknown as undefined }),
+      createEvent("approval_auto_approved", {
+        raw: null as unknown as undefined,
+      }),
     );
 
     expect(session.recentActivity).toHaveLength(0);

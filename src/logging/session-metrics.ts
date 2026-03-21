@@ -322,9 +322,7 @@ export function extractToolNameFromRaw(
   return candidates.find((v) => v !== null) ?? null;
 }
 
-export function extractToolInputFromRaw(
-  raw: Record<string, unknown>,
-): unknown {
+export function extractToolInputFromRaw(raw: Record<string, unknown>): unknown {
   const params =
     raw.params !== null &&
     typeof raw.params === "object" &&
