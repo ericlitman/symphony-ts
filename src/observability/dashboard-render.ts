@@ -922,9 +922,7 @@ function renderRunningRows(snapshot: RuntimeSnapshot): string {
     .join("");
 }
 
-function renderDetailPanel(
-  row: RuntimeSnapshot["running"][number],
-): string {
+function renderDetailPanel(row: RuntimeSnapshot["running"][number]): string {
   const tokenBreakdown = `
     <div class="detail-section">
       <p class="detail-section-title">Token breakdown</p>
