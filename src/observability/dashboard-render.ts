@@ -314,6 +314,33 @@ const DASHBOARD_STYLES = String.raw`
         border-color: #f6d3cf;
         color: var(--danger);
       }
+      .health-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-height: 1.85rem;
+        padding: 0.3rem 0.68rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--card-muted);
+        color: var(--ink);
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1;
+      }
+      .health-badge-dot {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--ink-muted);
+      }
+      .health-badge-green { background: var(--accent-soft); border-color: rgba(16, 163, 127, 0.18); color: var(--accent-ink); }
+      .health-badge-green .health-badge-dot { background: var(--accent); }
+      .health-badge-yellow { background: var(--warning-soft); border-color: var(--warning-line); color: var(--warning); }
+      .health-badge-yellow .health-badge-dot { background: var(--warning); }
+      .health-badge-red { background: var(--danger-soft); border-color: #f6d3cf; color: var(--danger); }
+      .health-badge-red .health-badge-dot { background: var(--danger); }
       .issue-id {
         font-weight: 600;
         letter-spacing: -0.01em;
@@ -872,6 +899,7 @@ function renderRunningRows(snapshot: RuntimeSnapshot): string {
                 <div class="detail-stack">
                   <span class="${stateBadgeClass(row.state)}">${escapeHtml(row.state)}</span>
                   ${row.rework_count !== undefined && row.rework_count > 0 ? `<span class="state-badge state-badge-warning">Rework ×${escapeHtml(row.rework_count)}</span>` : ""}
+                  ${renderHealthBadge(row.health, row.health_reason)}
                 </div>
               </td>
               <td>
