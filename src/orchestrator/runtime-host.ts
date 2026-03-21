@@ -25,6 +25,7 @@ import {
   StructuredLogger,
   createJsonLineSink,
 } from "../logging/structured-logger.js";
+import { formatEasternTimestamp } from "../logging/format-timestamp.js";
 import {
   type DashboardServerHost,
   type DashboardServerInstance,
@@ -345,7 +346,7 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
   }
 
   async requestRefresh(): Promise<RefreshResponse> {
-    const requestedAt = this.now().toISOString();
+    const requestedAt = formatEasternTimestamp(this.now());
     const coalesced = this.refreshQueued;
     this.refreshQueued = true;
 
@@ -1214,7 +1215,7 @@ function toRetryIssueDetail(
     running: null,
     retry: {
       attempt: retry.attempt,
-      due_at: new Date(retry.dueAtMs).toISOString(),
+      due_at: formatEasternTimestamp(new Date(retry.dueAtMs)),
       error: retry.error,
     },
     logs: {

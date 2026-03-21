@@ -6,6 +6,7 @@ import {
   type CodexDynamicTool,
   type CodexTurnResult,
 } from "../codex/app-server-client.js";
+import { formatEasternTimestamp } from "../logging/format-timestamp.js";
 import { createLinearGraphqlDynamicTool } from "../codex/linear-graphql-tool.js";
 import { createWorkpadSyncDynamicTool } from "../codex/workpad-sync-tool.js";
 import type {
@@ -182,7 +183,7 @@ export class AgentRunner {
       issueIdentifier: issue.identifier,
       attempt: input.attempt,
       workspacePath: "",
-      startedAt: new Date().toISOString(),
+      startedAt: formatEasternTimestamp(new Date()),
       status: "preparing_workspace",
     };
     const abortController = createAgentAbortController(input.signal);
@@ -311,7 +312,7 @@ export class AgentRunner {
               : lastTurn.status === "failed"
                 ? "turn_failed"
                 : "turn_cancelled",
-          timestamp: new Date().toISOString(),
+          timestamp: formatEasternTimestamp(new Date()),
           codexAppServerPid: liveSession.codexAppServerPid,
           sessionId: lastTurn.sessionId,
           threadId: lastTurn.threadId,

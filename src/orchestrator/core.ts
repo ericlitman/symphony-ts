@@ -21,6 +21,7 @@ import {
   addEndedSessionRuntime,
   applyCodexEventToOrchestratorState,
 } from "../logging/session-metrics.js";
+import { formatEasternTimestamp } from "../logging/format-timestamp.js";
 import type { IssueStateSnapshot, IssueTracker } from "../tracker/tracker.js";
 import {
   type EnsembleGateResult,
@@ -1201,7 +1202,7 @@ export class OrchestratorCore {
     }
 
     if (!this.state.issueFirstDispatchedAt[issue.id]) {
-      this.state.issueFirstDispatchedAt[issue.id] = this.now().toISOString();
+      this.state.issueFirstDispatchedAt[issue.id] = formatEasternTimestamp(this.now());
     }
 
     try {
@@ -1218,7 +1219,7 @@ export class OrchestratorCore {
         issue,
         identifier: issue.identifier,
         retryAttempt: normalizeRetryAttempt(attempt),
-        startedAt: this.now().toISOString(),
+        startedAt: formatEasternTimestamp(this.now()),
         workerHandle: spawned.workerHandle,
         monitorHandle: spawned.monitorHandle,
       };
