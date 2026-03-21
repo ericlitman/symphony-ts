@@ -21,6 +21,7 @@ describe("global error handlers", () => {
   });
 
   afterEach(() => {
+    process.exitCode = undefined;
     vi.restoreAllMocks();
     vi.useRealTimers();
   });

@@ -245,9 +245,6 @@ export function handleUnhandledRejection(reason: unknown): void {
 }
 
 export async function main(): Promise<void> {
-  process.on("uncaughtException", handleUncaughtException);
-  process.on("unhandledRejection", handleUnhandledRejection);
-
   const exitCode = await runCli(process.argv.slice(2));
   process.exitCode = exitCode;
 }
@@ -318,18 +315,7 @@ function renderUsage(): string {
 }
 
 if (shouldRunAsCli(import.meta.url, process.argv[1])) {
-  void main().catch((error: unknown) => {
-    process.stderr.write(
-      `${JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: "error",
-        event: "process_crash",
-        message: error instanceof Error ? error.message : String(error),
-        error_code: "main_promise_rejection",
-        stack: error instanceof Error ? error.stack : undefined,
-      })}\n`,
-    );
-    process.exitCode = 70;
-    setTimeout(() => process.exit(70), 100);
-  });
+  process.on("uncaughtException", handleUncaughtException);
+  process.on("unhandledRejection", handleUnhandledRejection);
+  void main().catch(handleUnhandledRejection);
 }
