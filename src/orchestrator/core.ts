@@ -248,6 +248,22 @@ export class OrchestratorCore {
       };
     }
 
+    // Check for pipeline-halt before dispatching
+    const haltIssue = await this.checkPipelineHalt();
+    if (haltIssue !== null) {
+      console.warn(
+        `[orchestrator] Pipeline halted: ${haltIssue.identifier} — ${haltIssue.title}. Skipping all dispatch.`,
+      );
+      return {
+        validation,
+        dispatchedIssueIds: [],
+        stopRequests: reconcileResult.stopRequests,
+        trackerFetchFailed: false,
+        reconciliationFetchFailed: reconcileResult.reconciliationFetchFailed,
+        runningCount: Object.keys(this.state.running).length,
+      };
+    }
+
     const dispatchedIssueIds: string[] = [];
     for (const issue of sortIssuesForDispatch(issues)) {
       if (this.availableSlots() <= 0) {
@@ -281,6 +297,25 @@ export class OrchestratorCore {
         dispatched: false,
         released: false,
         retryEntry: null,
+      };
+    }
+
+    // Check for pipeline-halt before dispatching — fail-open on errors
+    const haltIssue = await this.checkPipelineHalt();
+    if (haltIssue !== null) {
+      console.warn(
+        `[orchestrator] Pipeline halted: ${haltIssue.identifier} — ${haltIssue.title}. Deferring retry for ${retryEntry.identifier ?? issueId}.`,
+      );
+      // Don't consume the retry attempt — reschedule at the same attempt number
+      this.clearRetryEntry(issueId);
+      return {
+        dispatched: false,
+        released: false,
+        retryEntry: this.scheduleRetry(issueId, retryEntry.attempt, {
+          identifier: retryEntry.identifier,
+          error: `pipeline halted: ${haltIssue.identifier}`,
+          delayType: retryEntry.delayType,
+        }),
       };
     }
 
@@ -948,6 +983,52 @@ export class OrchestratorCore {
 
     applyCodexEventToOrchestratorState(this.state, runningEntry, input.event);
     return { applied: true };
+  }
+
+  /**
+   * Check if any non-terminal pipeline-halt issues exist.
+   * Prefers fetchOpenIssuesByLabels (server-side filtering) when available,
+   * falls back to fetchIssuesByLabels with client-side filtering.
+   * Returns the first open halt issue, or null if none / on error (fail-open).
+   */
+  private async checkPipelineHalt(): Promise<Issue | null> {
+    if (this.tracker.fetchOpenIssuesByLabels !== undefined) {
+      try {
+        const haltIssues = await this.tracker.fetchOpenIssuesByLabels(
+          ["pipeline-halt"],
+          this.config.tracker.terminalStates,
+        );
+        return haltIssues[0] ?? null;
+      } catch (error) {
+        console.warn(
+          "[orchestrator] fetchOpenIssuesByLabels failed, falling back to fetchIssuesByLabels.",
+          error,
+        );
+      }
+    }
+
+    if (this.tracker.fetchIssuesByLabels !== undefined) {
+      try {
+        const haltIssues = await this.tracker.fetchIssuesByLabels([
+          "pipeline-halt",
+        ]);
+        const terminalStates = toNormalizedStateSet(
+          this.config.tracker.terminalStates,
+        );
+        const openHaltIssue = haltIssues.find((haltIssue) => {
+          const normalizedState = normalizeIssueState(haltIssue.state);
+          return !terminalStates.has(normalizedState);
+        });
+        return openHaltIssue ?? null;
+      } catch (error) {
+        console.warn(
+          "[orchestrator] Failed to check for pipeline-halt issues. Continuing dispatch.",
+          error,
+        );
+      }
+    }
+
+    return null;
   }
 
   private syncStateFromConfig(): void {
