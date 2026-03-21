@@ -72,9 +72,7 @@ export function buildRuntimeSnapshot(
         ? Math.max(0, (now.getTime() - startedAtMs) / 1000)
         : 0;
       const tokensPerTurn =
-        entry.turnCount > 0
-          ? entry.totalStageTotalTokens / entry.turnCount
-          : 0;
+        entry.turnCount > 0 ? entry.totalStageTotalTokens / entry.turnCount : 0;
       const row: RuntimeSnapshotRunningRow = {
         issue_id: entry.issue.id,
         issue_identifier: entry.identifier,
