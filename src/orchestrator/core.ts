@@ -11,6 +11,7 @@ import {
   type OrchestratorState,
   type RetryEntry,
   type RunningEntry,
+  type StageRecord,
   createEmptyLiveSession,
   createInitialOrchestratorState,
   normalizeIssueState,
@@ -395,11 +396,26 @@ export class OrchestratorCore {
     }
 
     delete this.state.running[input.issueId];
-    addEndedSessionRuntime(
-      this.state,
-      runningEntry.startedAt,
-      input.endedAt ?? this.now(),
-    );
+    const endedAt = input.endedAt ?? this.now();
+    addEndedSessionRuntime(this.state, runningEntry.startedAt, endedAt);
+
+    // Append a StageRecord to execution history for this completed stage.
+    const stageName = this.state.issueStages[input.issueId];
+    if (stageName !== undefined) {
+      const stageRecord: StageRecord = {
+        stageName,
+        durationMs: endedAt.getTime() - Date.parse(runningEntry.startedAt),
+        totalTokens: runningEntry.totalStageTotalTokens,
+        turns: runningEntry.turnCount,
+        outcome: input.outcome,
+      };
+      let history = this.state.issueExecutionHistory[input.issueId];
+      if (history === undefined) {
+        history = [];
+        this.state.issueExecutionHistory[input.issueId] = history;
+      }
+      history.push(stageRecord);
+    }
 
     if (input.outcome === "normal") {
       const failureSignal = parseFailureSignal(input.agentMessage);
