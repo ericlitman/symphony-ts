@@ -14,6 +14,7 @@ export type HealthStatus = "green" | "yellow" | "red";
 export interface RuntimeSnapshotRunningRow {
   issue_id: string;
   issue_identifier: string;
+  issue_title: string;
   state: string;
   pipeline_stage: string | null;
   activity_summary: string | null;
@@ -56,6 +57,8 @@ export interface RuntimeSnapshot {
   counts: {
     running: number;
     retrying: number;
+    completed: number;
+    failed: number;
   };
   running: RuntimeSnapshotRunningRow[];
   retrying: RuntimeSnapshotRetryRow[];
@@ -105,6 +108,7 @@ export function buildRuntimeSnapshot(
       const row: RuntimeSnapshotRunningRow = {
         issue_id: entry.issue.id,
         issue_identifier: entry.identifier,
+        issue_title: entry.issue.title,
         state: entry.issue.state,
         pipeline_stage: state.issueStages[entry.issue.id] ?? null,
         activity_summary: entry.lastCodexMessage,
@@ -115,7 +119,10 @@ export function buildRuntimeSnapshot(
         started_at: entry.startedAt,
         first_dispatched_at:
           state.issueFirstDispatchedAt[entry.issue.id] ?? entry.startedAt,
-        last_event_at: entry.lastCodexTimestamp,
+        last_event_at:
+          entry.lastCodexTimestamp !== null
+            ? formatEasternTimestamp(new Date(entry.lastCodexTimestamp))
+            : null,
         stage_duration_seconds: stageDurationSeconds,
         tokens_per_turn: tokensPerTurn,
         tokens: {
@@ -150,11 +157,26 @@ export function buildRuntimeSnapshot(
       error: entry.error,
     }));
 
+  let completedCount = 0;
+  let failedCount = 0;
+  for (const history of Object.values(state.issueExecutionHistory)) {
+    if (history.length > 0) {
+      const finalStage = history.at(-1);
+      if (finalStage?.outcome === "success") {
+        completedCount++;
+      } else if (finalStage?.outcome === "failure") {
+        failedCount++;
+      }
+    }
+  }
+
   return {
     generated_at: formatEasternTimestamp(now),
     counts: {
       running: running.length,
       retrying: retrying.length,
+      completed: completedCount,
+      failed: failedCount,
     },
     running,
     retrying,

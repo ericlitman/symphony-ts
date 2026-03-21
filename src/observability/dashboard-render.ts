@@ -346,6 +346,13 @@ const DASHBOARD_STYLES = String.raw`
         font-weight: 600;
         letter-spacing: -0.01em;
       }
+      .issue-title {
+        font-size: 0.84rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+      }
       .issue-link {
         color: var(--muted);
         font-size: 0.86rem;
@@ -614,6 +621,18 @@ ${DASHBOARD_STYLES}
             <p class="metric-label">Retrying</p>
             <p id="metric-retrying" class="metric-value numeric">${snapshot.counts.retrying}</p>
             <p class="metric-detail">Issues waiting for the next retry window.</p>
+          </article>
+
+          <article class="metric-card">
+            <p class="metric-label">Completed</p>
+            <p id="metric-completed" class="metric-value numeric">${snapshot.counts.completed}</p>
+            <p class="metric-detail">Issues that completed successfully.</p>
+          </article>
+
+          <article class="metric-card">
+            <p class="metric-label">Failed</p>
+            <p id="metric-failed" class="metric-value numeric">${snapshot.counts.failed}</p>
+            <p class="metric-detail">Issues whose final stage failed.</p>
           </article>
 
           <article class="metric-card">
@@ -888,7 +907,7 @@ function renderDashboardClientScript(
             const detailRow = '<tr id="' + escapeHtml(detailId) + '" class="detail-row" style="display:none;"><td colspan="7">' + renderDetailPanel(row, detailId) + '</td></tr>';
 
             return '<tr class="session-row">' +
-              '<td><div class="issue-stack"><span class="issue-id">' + escapeHtml(row.issue_identifier) + '</span><a class="issue-link" href="/api/v1/' + encodeURIComponent(row.issue_identifier) + '">JSON details</a>' + pipelineStageHtml + expandToggle + '</div></td>' +
+              '<td><div class="issue-stack"><span class="issue-id">' + escapeHtml(row.issue_identifier) + '</span><span class="muted issue-title">' + escapeHtml(row.issue_title) + '</span><a class="issue-link" href="/api/v1/' + encodeURIComponent(row.issue_identifier) + '">JSON details</a>' + pipelineStageHtml + expandToggle + '</div></td>' +
               '<td><div class="detail-stack"><span class="' + stateBadgeClass(row.state) + '">' + escapeHtml(row.state) + '</span>' + reworkHtml + healthHtml + '</div></td>' +
               '<td><div class="session-stack">' + sessionCell + '</div></td>' +
               '<td class="numeric">' + formatRuntimeAndTurns(row, next.generated_at) + '</td>' +
@@ -928,6 +947,8 @@ function renderDashboardClientScript(
           document.getElementById('generated-at').textContent = 'Generated at ' + next.generated_at;
           document.getElementById('metric-running').textContent = String(next.counts.running);
           document.getElementById('metric-retrying').textContent = String(next.counts.retrying);
+          document.getElementById('metric-completed').textContent = String(next.counts.completed);
+          document.getElementById('metric-failed').textContent = String(next.counts.failed);
           document.getElementById('metric-total').textContent = formatInteger(next.codex_totals.total_tokens);
           document.getElementById('metric-total-detail').textContent = 'In ' + formatInteger(next.codex_totals.input_tokens) + ' / Out ' + formatInteger(next.codex_totals.output_tokens);
           document.getElementById('metric-runtime').textContent = formatRuntimeSeconds(next.codex_totals.seconds_running);
@@ -1002,6 +1023,7 @@ function renderRunningRows(snapshot: RuntimeSnapshot): string {
               <td>
                 <div class="issue-stack">
                   <span class="issue-id">${escapeHtml(row.issue_identifier)}</span>
+                  <span class="muted issue-title">${escapeHtml(row.issue_title)}</span>
                   <a class="issue-link" href="/api/v1/${encodeURIComponent(
                     row.issue_identifier,
                   )}">JSON details</a>
