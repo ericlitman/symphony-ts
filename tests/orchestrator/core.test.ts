@@ -1591,6 +1591,180 @@ describe("completed issue resume guard", () => {
   });
 });
 
+describe("execution history stage records", () => {
+  function createStageConfig() {
+    const config = createConfig();
+    config.stages = {
+      initialStage: "investigate",
+      stages: {
+        investigate: {
+          type: "agent",
+          runner: null,
+          model: null,
+          prompt: null,
+          maxTurns: null,
+          timeoutMs: null,
+          concurrency: null,
+          gateType: null,
+          maxRework: null,
+          reviewers: [],
+          transitions: {
+            onComplete: "implement",
+            onApprove: null,
+            onRework: null,
+          },
+          linearState: null,
+        },
+        implement: {
+          type: "agent",
+          runner: null,
+          model: null,
+          prompt: null,
+          maxTurns: null,
+          timeoutMs: null,
+          concurrency: null,
+          gateType: null,
+          maxRework: null,
+          reviewers: [],
+          transitions: { onComplete: null, onApprove: null, onRework: null },
+          linearState: null,
+        },
+      },
+    };
+    return config;
+  }
+
+  it("stage record appended on worker exit", async () => {
+    const config = createStageConfig();
+    const orchestrator = createOrchestrator({ config });
+
+    await orchestrator.pollTick();
+    // Set the issue to the investigate stage
+    orchestrator.getState().issueStages["1"] = "investigate";
+
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      endedAt: new Date("2026-03-06T00:00:10.000Z"),
+    });
+
+    const history = orchestrator.getState().issueExecutionHistory["1"];
+    expect(history).toBeDefined();
+    expect(history).toHaveLength(1);
+  });
+
+  it("stage record captures all fields", async () => {
+    const config = createStageConfig();
+    const orchestrator = new OrchestratorCore({
+      config,
+      tracker: createTracker({
+        candidates: [createIssue({ id: "1", identifier: "ISSUE-1" })],
+        statesById: [{ id: "1", identifier: "ISSUE-1", state: "In Progress" }],
+      }),
+      spawnWorker: async () => ({
+        workerHandle: { pid: 1001 },
+        monitorHandle: { ref: "monitor-1" },
+      }),
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.getState().issueStages["1"] = "investigate";
+
+    // Apply codex event to give the running entry some token/turn data
+    orchestrator.onCodexEvent({
+      issueId: "1",
+      event: {
+        event: "turn_completed",
+        timestamp: "2026-03-06T00:00:06.000Z",
+        codexAppServerPid: "1001",
+        sessionId: "s1",
+        threadId: "t1",
+        turnId: "turn-1",
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        rateLimits: {},
+        message: "done",
+      },
+    });
+
+    const startedAt = orchestrator.getState().running["1"]?.startedAt;
+    expect(startedAt).toBeDefined();
+
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      endedAt: new Date("2026-03-06T00:01:05.000Z"),
+    });
+
+    const history = orchestrator.getState().issueExecutionHistory["1"];
+    expect(history).toBeDefined();
+    expect(history).toHaveLength(1);
+    const record = history![0]!;
+    expect(record.stageName).toBe("investigate");
+    expect(record.durationMs).toBe(60_000);
+    expect(record.totalTokens).toBeGreaterThanOrEqual(0);
+    expect(typeof record.turns).toBe("number");
+    expect(record.outcome).toBe("normal");
+  });
+
+  it("accumulates records across multiple stages", async () => {
+    const config = createStageConfig();
+    const orchestrator = createOrchestrator({ config });
+
+    // First stage: investigate
+    await orchestrator.pollTick();
+    orchestrator.getState().issueStages["1"] = "investigate";
+
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      endedAt: new Date("2026-03-06T00:01:00.000Z"),
+    });
+
+    // After normal exit, stage advances to "implement"
+    // issueExecutionHistory should have 1 record for "investigate"
+    const historyAfterFirst =
+      orchestrator.getState().issueExecutionHistory["1"];
+    expect(historyAfterFirst).toHaveLength(1);
+    expect(historyAfterFirst![0]!.stageName).toBe("investigate");
+
+    // Second stage: implement
+    await orchestrator.onRetryTimer("1");
+    orchestrator.getState().issueStages["1"] = "implement";
+
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      endedAt: new Date("2026-03-06T00:02:00.000Z"),
+    });
+
+    // issueExecutionHistory should have 2 records
+    const historyAfterSecond =
+      orchestrator.getState().issueExecutionHistory["1"];
+    expect(historyAfterSecond).toHaveLength(2);
+    expect(historyAfterSecond![1]!.stageName).toBe("implement");
+    expect(historyAfterSecond![1]!.outcome).toBe("abnormal");
+  });
+
+  it("does not append a stage record when no stage is set for the issue", async () => {
+    const orchestrator = createOrchestrator();
+
+    await orchestrator.pollTick();
+    // No issueStages entry — no stage configured
+
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "normal",
+      endedAt: new Date("2026-03-06T00:01:00.000Z"),
+    });
+
+    // issueExecutionHistory should have no entry for this issue
+    expect(
+      orchestrator.getState().issueExecutionHistory["1"],
+    ).toBeUndefined();
+  });
+});
+
 function createOrchestrator(overrides?: {
   config?: ResolvedWorkflowConfig;
   tracker?: IssueTracker;
