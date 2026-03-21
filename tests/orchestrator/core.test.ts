@@ -2723,6 +2723,7 @@ describe("auto-close parent", () => {
     const config = createConfig();
     config.stages = {
       initialStage: "implement",
+      fastTrack: null,
       stages: {
         implement: {
           type: "agent",
@@ -2810,6 +2811,7 @@ describe("auto-close parent", () => {
     const config = createConfig();
     config.stages = {
       initialStage: "implement",
+      fastTrack: null,
       stages: {
         implement: {
           type: "agent",
