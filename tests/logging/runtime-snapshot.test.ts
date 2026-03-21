@@ -536,7 +536,7 @@ describe("runtime snapshot", () => {
       lastCodexTimestamp: "2026-03-06T10:00:05.000Z",
       lastCodexMessage: "Starting",
       turnCount: 5,
-      codexInputTokens: 0,   // Absolute counters reset at turn boundary
+      codexInputTokens: 0, // Absolute counters reset at turn boundary
       codexOutputTokens: 0,
       codexTotalTokens: 0,
     });
