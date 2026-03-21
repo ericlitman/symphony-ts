@@ -1035,7 +1035,11 @@ function renderHealthBadge(
   healthReason: string | null,
 ): string {
   const label =
-    health === "red" ? "🔴 Red" : health === "yellow" ? "🟡 Yellow" : "🟢 Green";
+    health === "red"
+      ? "🔴 Red"
+      : health === "yellow"
+        ? "🟡 Yellow"
+        : "🟢 Green";
   const cssClass = `health-badge health-badge-${health}`;
   const title =
     healthReason !== null ? ` title="${escapeHtml(healthReason)}"` : "";
