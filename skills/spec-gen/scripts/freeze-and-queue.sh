@@ -48,6 +48,44 @@ if [[ ! -f "$WORKFLOW_PATH" ]]; then
   exit 1
 fi
 
+# ── Post-creation verification ────────────────────────────────────────────────
+# Queries an issue by ID and confirms project.slugId and (for sub-issues) parent.id
+# match expected values. Logs warnings on mismatch; never exits.
+# Args: $1=issue_uuid, $2=expected_project_slug, $3=expected_parent_id (optional)
+verify_issue_creation() {
+  local issue_uuid="$1"
+  local expected_slug="$2"
+  local expected_parent_id="${3:-}"
+
+  # Skip verification in dry-run mode (no API calls)
+  if [[ "$DRY_RUN" == true ]]; then
+    return 0
+  fi
+
+  local verify_result
+  verify_result=$($LINEAR_CLI api query -o json --quiet --compact \
+    -v "issueId=$issue_uuid" \
+    'query($issueId: String!) { issue(id: $issueId) { project { slugId } parent { id } } }' 2>/dev/null) || true
+
+  local actual_slug
+  actual_slug=$(echo "$verify_result" | jq -r '.data.issue.project.slugId // empty')
+  if [[ -n "$actual_slug" && "$actual_slug" != "$expected_slug" ]]; then
+    echo "WARNING: project mismatch on $issue_uuid — expected slugId=$expected_slug, got $actual_slug" >&2
+  elif [[ -z "$actual_slug" ]]; then
+    echo "WARNING: VERIFY FAIL — could not confirm project.slugId for $issue_uuid" >&2
+  fi
+
+  if [[ -n "$expected_parent_id" ]]; then
+    local actual_parent
+    actual_parent=$(echo "$verify_result" | jq -r '.data.issue.parent.id // empty')
+    if [[ -n "$actual_parent" && "$actual_parent" != "$expected_parent_id" ]]; then
+      echo "WARNING: parent mismatch on $issue_uuid — expected parent=$expected_parent_id, got $actual_parent" >&2
+    elif [[ -z "$actual_parent" ]]; then
+      echo "WARNING: VERIFY FAIL — could not confirm parent.id for $issue_uuid" >&2
+    fi
+  fi
+}
+
 # ── Trivial mode: single issue in Todo, no spec ─────────────────────────────
 
 if [[ "$TRIVIAL" == true ]]; then
@@ -885,44 +923,6 @@ GQLEOF
   echo "  Response: ${result:-<empty>}" >&2
   rm -f "$gql_tmpfile"
   return 1
-}
-
-# ── Post-creation verification ────────────────────────────────────────────────
-# Queries an issue by ID and confirms project.slugId and (for sub-issues) parent.id
-# match expected values. Logs warnings on mismatch; never exits.
-# Args: $1=issue_uuid, $2=expected_project_slug, $3=expected_parent_id (optional)
-verify_issue_creation() {
-  local issue_uuid="$1"
-  local expected_slug="$2"
-  local expected_parent_id="${3:-}"
-
-  # Skip verification in dry-run mode (no API calls)
-  if [[ "$DRY_RUN" == true ]]; then
-    return 0
-  fi
-
-  local verify_result
-  verify_result=$($LINEAR_CLI api query -o json --quiet --compact \
-    -v "issueId=$issue_uuid" \
-    'query($issueId: String!) { issue(id: $issueId) { project { slugId } parent { id } } }' 2>/dev/null) || true
-
-  local actual_slug
-  actual_slug=$(echo "$verify_result" | jq -r '.data.issue.project.slugId // empty')
-  if [[ -n "$actual_slug" && "$actual_slug" != "$expected_slug" ]]; then
-    echo "WARNING: project mismatch on $issue_uuid — expected slugId=$expected_slug, got $actual_slug" >&2
-  elif [[ -z "$actual_slug" ]]; then
-    echo "WARNING: VERIFY FAIL — could not confirm project.slugId for $issue_uuid" >&2
-  fi
-
-  if [[ -n "$expected_parent_id" ]]; then
-    local actual_parent
-    actual_parent=$(echo "$verify_result" | jq -r '.data.issue.parent.id // empty')
-    if [[ -n "$actual_parent" && "$actual_parent" != "$expected_parent_id" ]]; then
-      echo "WARNING: parent mismatch on $issue_uuid — expected parent=$expected_parent_id, got $actual_parent" >&2
-    elif [[ -z "$actual_parent" ]]; then
-      echo "WARNING: VERIFY FAIL — could not confirm parent.id for $issue_uuid" >&2
-    fi
-  fi
 }
 
 # 1. Sequential chain based on priority ordering
