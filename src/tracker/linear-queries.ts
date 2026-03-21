@@ -163,3 +163,31 @@ export const LINEAR_ISSUES_BY_LABELS_QUERY = `
     }
   }
 `.trim();
+
+export const LINEAR_OPEN_ISSUES_BY_LABELS_QUERY = `
+  query SymphonyOpenIssuesByLabels(
+    $projectSlug: String!
+    $labelNames: [String!]!
+    $excludeStateNames: [String!]!
+    $first: Int!
+    $relationFirst: Int!
+  ) {
+    issues(
+      first: $first
+      filter: {
+        project: { slugId: { eq: $projectSlug } }
+        labels: { name: { in: $labelNames } }
+        state: { name: { nin: $excludeStateNames } }
+      }
+      orderBy: createdAt
+    ) {
+      nodes {
+        ${ISSUE_FIELDS}
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`.trim();

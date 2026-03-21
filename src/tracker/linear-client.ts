@@ -16,6 +16,7 @@ import {
   LINEAR_ISSUES_BY_STATES_QUERY,
   LINEAR_ISSUE_STATES_BY_IDS_QUERY,
   LINEAR_ISSUE_UPDATE_MUTATION,
+  LINEAR_OPEN_ISSUES_BY_LABELS_QUERY,
   LINEAR_WORKFLOW_STATES_QUERY,
 } from "./linear-queries.js";
 import type { IssueStateSnapshot, IssueTracker } from "./tracker.js";
@@ -133,6 +134,24 @@ export class LinearTrackerClient implements IssueTracker {
       projectSlug: this.requireProjectSlug(),
       labelNames,
       first: this.pageSize,
+      relationFirst: this.pageSize,
+    });
+  }
+
+  async fetchOpenIssuesByLabels(
+    labelNames: string[],
+    excludeStateNames: string[],
+  ): Promise<Issue[]> {
+    if (labelNames.length === 0) {
+      return [];
+    }
+
+    // Only fetch 1 issue — we only need to know if any non-terminal halt issue exists
+    return this.fetchIssuePages(LINEAR_OPEN_ISSUES_BY_LABELS_QUERY, {
+      projectSlug: this.requireProjectSlug(),
+      labelNames,
+      excludeStateNames,
+      first: 1,
       relationFirst: this.pageSize,
     });
   }

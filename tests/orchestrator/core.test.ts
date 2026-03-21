@@ -497,6 +497,285 @@ describe("orchestrator core", () => {
     expect(result.dispatchedIssueIds).toEqual(["1", "2"]);
     expect(Object.keys(orchestrator.getState().running)).toEqual(["1", "2"]);
   });
+  it("uses fetchOpenIssuesByLabels for halt check when available (P2: server-side filtering)", async () => {
+    let openIssuesByLabelsCalled = false;
+    let issuesByLabelsCalled = false;
+
+    const regularIssues = [
+      createIssue({ id: "1", identifier: "ISSUE-1", state: "Todo" }),
+    ];
+
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return regularIssues;
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchIssuesByLabels() {
+        issuesByLabelsCalled = true;
+        return [];
+      },
+      async fetchOpenIssuesByLabels() {
+        openIssuesByLabelsCalled = true;
+        return [];
+      },
+    };
+
+    const orchestrator = createOrchestrator({ tracker });
+    await orchestrator.pollTick();
+
+    expect(openIssuesByLabelsCalled).toBe(true);
+    expect(issuesByLabelsCalled).toBe(false);
+  });
+});
+
+describe("retry timer pipeline-halt guard", () => {
+  it("skips dispatch and requeues retry at same attempt when pipeline is halted", async () => {
+    const haltIssue = createIssue({
+      id: "halt-1",
+      identifier: "SYMPH-99",
+      title: "CI broken",
+      state: "In Progress",
+      labels: ["pipeline-halt"],
+    });
+
+    const timers = createFakeTimerScheduler();
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return [createIssue({ id: "1", identifier: "ISSUE-1" })];
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      async fetchOpenIssuesByLabels(labelNames: string[]) {
+        if (labelNames.includes("pipeline-halt")) {
+          return [haltIssue];
+        }
+        return [];
+      },
+    };
+
+    const spawnCalls: string[] = [];
+    const orchestrator = new OrchestratorCore({
+      config: createConfig(),
+      tracker,
+      spawnWorker: async ({ issue }) => {
+        spawnCalls.push(issue.id);
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
+      },
+      timerScheduler: timers,
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    // Manually set up a retry entry at attempt 2
+    orchestrator.getState().claimed.add("1");
+    orchestrator.getState().retryAttempts["1"] = {
+      issueId: "1",
+      identifier: "ISSUE-1",
+      attempt: 2,
+      dueAtMs: Date.parse("2026-03-06T00:00:00.000Z"),
+      timerHandle: null,
+      error: "previous failure",
+      delayType: "failure",
+    };
+
+    const result = await orchestrator.onRetryTimer("1");
+
+    // Should NOT dispatch
+    expect(result.dispatched).toBe(false);
+    expect(result.released).toBe(false);
+    expect(spawnCalls).toEqual([]);
+
+    // Should requeue at the SAME attempt (2), not increment to 3
+    expect(result.retryEntry).not.toBeNull();
+    expect(result.retryEntry).toMatchObject({
+      issueId: "1",
+      attempt: 2,
+      identifier: "ISSUE-1",
+      error: "pipeline halted: SYMPH-99",
+      delayType: "failure",
+    });
+
+    // Claim should still be held
+    expect(orchestrator.getState().claimed.has("1")).toBe(true);
+  });
+
+  it("dispatches normally when halt check returns no open issues", async () => {
+    const timers = createFakeTimerScheduler();
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return [createIssue({ id: "1", identifier: "ISSUE-1" })];
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [{ id: "1", identifier: "ISSUE-1", state: "In Progress" }];
+      },
+      async fetchOpenIssuesByLabels() {
+        return [];
+      },
+    };
+
+    const spawnCalls: string[] = [];
+    const orchestrator = new OrchestratorCore({
+      config: createConfig(),
+      tracker,
+      spawnWorker: async ({ issue }) => {
+        spawnCalls.push(issue.id);
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
+      },
+      timerScheduler: timers,
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    // Set up a retry entry
+    orchestrator.getState().claimed.add("1");
+    orchestrator.getState().retryAttempts["1"] = {
+      issueId: "1",
+      identifier: "ISSUE-1",
+      attempt: 1,
+      dueAtMs: Date.parse("2026-03-06T00:00:00.000Z"),
+      timerHandle: null,
+      error: "previous failure",
+      delayType: "failure",
+    };
+
+    const result = await orchestrator.onRetryTimer("1");
+
+    expect(result.dispatched).toBe(true);
+    expect(result.released).toBe(false);
+    expect(spawnCalls).toEqual(["1"]);
+  });
+
+  it("continues dispatch when halt check throws (fail-open)", async () => {
+    const timers = createFakeTimerScheduler();
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return [createIssue({ id: "1", identifier: "ISSUE-1" })];
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [{ id: "1", identifier: "ISSUE-1", state: "In Progress" }];
+      },
+      async fetchOpenIssuesByLabels() {
+        throw new Error("Linear API timeout");
+      },
+    };
+
+    const spawnCalls: string[] = [];
+    const orchestrator = new OrchestratorCore({
+      config: createConfig(),
+      tracker,
+      spawnWorker: async ({ issue }) => {
+        spawnCalls.push(issue.id);
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
+      },
+      timerScheduler: timers,
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    // Set up a retry entry
+    orchestrator.getState().claimed.add("1");
+    orchestrator.getState().retryAttempts["1"] = {
+      issueId: "1",
+      identifier: "ISSUE-1",
+      attempt: 1,
+      dueAtMs: Date.parse("2026-03-06T00:00:00.000Z"),
+      timerHandle: null,
+      error: "previous failure",
+      delayType: "failure",
+    };
+
+    const result = await orchestrator.onRetryTimer("1");
+
+    // Should proceed with dispatch despite halt check failure
+    expect(result.dispatched).toBe(true);
+    expect(spawnCalls).toEqual(["1"]);
+  });
+
+  it("falls back to fetchIssuesByLabels when fetchOpenIssuesByLabels is not available", async () => {
+    const haltIssue = createIssue({
+      id: "halt-1",
+      identifier: "SYMPH-99",
+      title: "CI broken",
+      state: "In Progress",
+      labels: ["pipeline-halt"],
+    });
+
+    const timers = createFakeTimerScheduler();
+    const tracker: IssueTracker = {
+      async fetchCandidateIssues() {
+        return [createIssue({ id: "1", identifier: "ISSUE-1" })];
+      },
+      async fetchIssuesByStates() {
+        return [];
+      },
+      async fetchIssueStatesByIds() {
+        return [];
+      },
+      // Only fetchIssuesByLabels, no fetchOpenIssuesByLabels
+      async fetchIssuesByLabels(labelNames: string[]) {
+        if (labelNames.includes("pipeline-halt")) {
+          return [haltIssue];
+        }
+        return [];
+      },
+    };
+
+    const spawnCalls: string[] = [];
+    const orchestrator = new OrchestratorCore({
+      config: createConfig(),
+      tracker,
+      spawnWorker: async ({ issue }) => {
+        spawnCalls.push(issue.id);
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
+      },
+      timerScheduler: timers,
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    orchestrator.getState().claimed.add("1");
+    orchestrator.getState().retryAttempts["1"] = {
+      issueId: "1",
+      identifier: "ISSUE-1",
+      attempt: 2,
+      dueAtMs: Date.parse("2026-03-06T00:00:00.000Z"),
+      timerHandle: null,
+      error: "previous failure",
+      delayType: "failure",
+    };
+
+    const result = await orchestrator.onRetryTimer("1");
+
+    expect(result.dispatched).toBe(false);
+    expect(result.retryEntry).toMatchObject({
+      attempt: 2,
+      error: "pipeline halted: SYMPH-99",
+    });
+    expect(spawnCalls).toEqual([]);
+  });
 });
 
 describe("orchestrator core integration flows", () => {
