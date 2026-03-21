@@ -517,35 +517,30 @@ if [[ "$DRY_RUN" == true ]]; then
     exit 0
   fi
 
-  for ((i=0; i<TOTAL; i++)); do
+  # Interleaved creation order: create each sub-issue in Todo, then add its sequential blocking relation
+  relation_count=0
+  for ((k=0; k<TOTAL; k++)); do
+    i="${SORTED_INDICES[$k]}"
     echo "--- SUB-ISSUE $((i+1)): ${TASK_TITLES[$i]} ---"
     echo "Priority: ${TASK_PRIORITIES[$i]}"
-    echo "State: Backlog (promoted to Todo after relations)"
+    echo "State: Todo"
     echo "Scope: ${TASK_SCOPES[$i]:-<none>}"
     echo "Scenarios ref: ${TASK_SCENARIO_REFS[$i]:-<none>}"
     sub_body=$(build_sub_issue_body "$i")
     echo "Body preview (first 10 lines):"
     echo "$sub_body" | head -10 | sed 's/^/  /'
     echo "  ..."
+    # Show sequential blocking relation immediately after this sub-issue
+    if [[ $k -gt 0 ]]; then
+      blocker_idx="${SORTED_INDICES[$((k-1))]}"
+      echo "  → blocked by Task $((blocker_idx+1)) (${TASK_TITLES[$blocker_idx]})"
+      ((relation_count++))
+    fi
     echo ""
   done
 
-  # Show blockedBy relations
-  echo "--- BLOCKED-BY RELATIONS ---"
-  relation_count=0
-
-  # Sequential chain based on priority ordering
-  echo "  Sequential (priority order):"
-  for ((k=0; k<TOTAL-1; k++)); do
-    blocker_idx="${SORTED_INDICES[$k]}"
-    blocked_idx="${SORTED_INDICES[$((k+1))]}"
-    echo "    Task $((blocked_idx+1)) (${TASK_TITLES[$blocked_idx]}) blocked by Task $((blocker_idx+1)) (${TASK_TITLES[$blocker_idx]})"
-    ((relation_count++))
-  done
-  [[ $TOTAL -le 1 ]] && echo "    (none — single task)"
-
-  # Additional file-overlap relations (only those not already covered by sequential chain)
-  echo "  File-overlap (additional):"
+  # Additional file-overlap relations (second pass, only those not already covered by sequential chain)
+  echo "--- FILE-OVERLAP RELATIONS ---"
   overlap_count=0
   for ((i=0; i<TOTAL; i++)); do
     for ((j=i+1; j<TOTAL; j++)); do
@@ -571,7 +566,7 @@ if [[ "$DRY_RUN" == true ]]; then
   [[ $overlap_count -eq 0 ]] && echo "    (none)"
 
   echo ""
-  echo "=== Dry run complete: 1 parent + $TOTAL sub-issues (Backlog→Todo) + $relation_count relations would be created ==="
+  echo "=== Dry run complete: 1 parent + $TOTAL sub-issues (Todo) + $relation_count relations would be created ==="
   exit 0
 fi
 
