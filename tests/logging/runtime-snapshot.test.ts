@@ -216,6 +216,8 @@ describe("runtime snapshot", () => {
     expect(snapshot.counts).toEqual({
       running: 2,
       retrying: 1,
+      completed: 0,
+      failed: 0,
     });
     expect(snapshot.running.map((row) => row.issue_identifier)).toEqual([
       "AAA-1",
@@ -224,19 +226,21 @@ describe("runtime snapshot", () => {
     expect(snapshot.running[0]).toMatchObject({
       issue_id: "issue-1",
       issue_identifier: "AAA-1",
+      issue_title: "AAA-1",
       state: "In Progress",
       session_id: "thread-a-turn-1",
       turn_count: 1,
       last_event: "turn_completed",
       last_message: "Finished",
       started_at: "2026-03-06T10:00:00.000Z",
-      last_event_at: "2026-03-06T10:00:05.000Z",
       tokens: {
         input_tokens: 30,
         output_tokens: 20,
         total_tokens: 50,
       },
     });
+    // last_event_at is now formatted in Eastern time
+    expect(snapshot.running[0]!.last_event_at).toContain("ET");
     expect(snapshot.retrying).toEqual([
       {
         issue_id: "issue-3",
@@ -651,6 +655,213 @@ describe("runtime snapshot", () => {
 
     expect(snapshot.running[0]!.total_pipeline_tokens).toBe(0);
     expect(snapshot.running[0]!.execution_history).toEqual([]);
+  });
+
+  it("sets issue_title from entry.issue.title", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    const entry = createRunningEntry({
+      issueId: "issue-1",
+      identifier: "ABC-1",
+      startedAt: "2026-03-06T10:00:00.000Z",
+      sessionId: "thread-a-turn-1",
+      lastCodexEvent: null,
+      lastCodexTimestamp: null,
+      lastCodexMessage: null,
+      turnCount: 0,
+      codexInputTokens: 0,
+      codexOutputTokens: 0,
+      codexTotalTokens: 0,
+    });
+    entry.issue.title = "Add login page";
+    state.running["issue-1"] = entry;
+
+    const snapshot = buildRuntimeSnapshot(state, {
+      now: new Date("2026-03-06T10:00:10.000Z"),
+    });
+
+    expect(snapshot.running[0]!.issue_title).toBe("Add login page");
+  });
+
+  it("formats last_event_at as Eastern time instead of raw UTC", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    state.running["issue-1"] = createRunningEntry({
+      issueId: "issue-1",
+      identifier: "ABC-1",
+      startedAt: "2026-03-06T10:00:00.000Z",
+      sessionId: "thread-a-turn-1",
+      lastCodexEvent: "turn_completed",
+      lastCodexTimestamp: "2026-03-06T15:30:45.000Z",
+      lastCodexMessage: "Working",
+      turnCount: 1,
+      codexInputTokens: 10,
+      codexOutputTokens: 5,
+      codexTotalTokens: 15,
+    });
+
+    const snapshot = buildRuntimeSnapshot(state, {
+      now: new Date("2026-03-06T15:31:00.000Z"),
+    });
+
+    const lastEventAt = snapshot.running[0]!.last_event_at!;
+    // Should be formatted in Eastern time, not raw ISO
+    expect(lastEventAt).not.toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(lastEventAt).toContain("ET");
+    // 15:30:45 UTC = 10:30:45 AM ET (EST)
+    expect(lastEventAt).toContain("10:30:45");
+  });
+
+  it("returns null last_event_at when lastCodexTimestamp is null", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    state.running["issue-1"] = createRunningEntry({
+      issueId: "issue-1",
+      identifier: "ABC-1",
+      startedAt: "2026-03-06T10:00:00.000Z",
+      sessionId: "thread-a-turn-1",
+      lastCodexEvent: null,
+      lastCodexTimestamp: null,
+      lastCodexMessage: null,
+      turnCount: 0,
+      codexInputTokens: 0,
+      codexOutputTokens: 0,
+      codexTotalTokens: 0,
+    });
+
+    const snapshot = buildRuntimeSnapshot(state, {
+      now: new Date("2026-03-06T10:00:10.000Z"),
+    });
+
+    expect(snapshot.running[0]!.last_event_at).toBeNull();
+  });
+
+  it("counts completed issues whose final stage outcome is success", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    state.issueExecutionHistory["done-1"] = [
+      { stageName: "investigate", durationMs: 5000, totalTokens: 1000, turns: 2, outcome: "success" },
+    ];
+    state.issueExecutionHistory["done-2"] = [
+      { stageName: "investigate", durationMs: 3000, totalTokens: 500, turns: 1, outcome: "success" },
+      { stageName: "implement", durationMs: 8000, totalTokens: 2000, turns: 5, outcome: "success" },
+    ];
+    state.issueExecutionHistory["fail-1"] = [
+      { stageName: "investigate", durationMs: 3000, totalTokens: 500, turns: 1, outcome: "success" },
+      { stageName: "implement", durationMs: 8000, totalTokens: 2000, turns: 5, outcome: "failure" },
+    ];
+
+    const snapshot = buildRuntimeSnapshot(state, {
+      now: new Date("2026-03-06T10:00:10.000Z"),
+    });
+
+    expect(snapshot.counts.completed).toBe(2);
+    expect(snapshot.counts.failed).toBe(1);
+  });
+
+  it("returns zero completed/failed when no execution history exists", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+
+    const snapshot = buildRuntimeSnapshot(state, {
+      now: new Date("2026-03-06T10:00:10.000Z"),
+    });
+
+    expect(snapshot.counts.completed).toBe(0);
+    expect(snapshot.counts.failed).toBe(0);
+  });
+
+  it("computes pipeline total time from first_dispatched_at for multi-stage issues", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    const now = new Date("2026-03-06T11:00:00.000Z");
+    // First dispatched 1 hour ago
+    state.issueFirstDispatchedAt["issue-1"] = "2026-03-06T10:00:00.000Z";
+    state.issueExecutionHistory["issue-1"] = [
+      { stageName: "investigate", durationMs: 600_000, totalTokens: 10_000, turns: 5, outcome: "success" },
+    ];
+    const entry = createRunningEntry({
+      issueId: "issue-1",
+      identifier: "ABC-1",
+      startedAt: "2026-03-06T10:30:00.000Z", // current stage started 30min ago
+      sessionId: "thread-a-turn-1",
+      lastCodexEvent: "turn_completed",
+      lastCodexTimestamp: "2026-03-06T10:59:50.000Z",
+      lastCodexMessage: "Working",
+      turnCount: 3,
+      codexInputTokens: 10,
+      codexOutputTokens: 5,
+      codexTotalTokens: 15,
+    });
+    state.running["issue-1"] = entry;
+
+    const snapshot = buildRuntimeSnapshot(state, { now });
+
+    // first_dispatched_at should be 1 hour before now
+    expect(snapshot.running[0]!.first_dispatched_at).toBe("2026-03-06T10:00:00.000Z");
+    // Pipeline column uses first_dispatched_at for total wall-clock time
+    // The dashboard formats elapsed from first_dispatched_at to generated_at
+  });
+
+  it("uses started_at as pipeline total time for single-stage issues", () => {
+    const state = createInitialOrchestratorState({
+      pollIntervalMs: 30_000,
+      maxConcurrentAgents: 2,
+    });
+    const now = new Date("2026-03-06T10:05:00.000Z");
+    const entry = createRunningEntry({
+      issueId: "issue-1",
+      identifier: "ABC-1",
+      startedAt: "2026-03-06T10:00:00.000Z",
+      sessionId: "thread-a-turn-1",
+      lastCodexEvent: "turn_completed",
+      lastCodexTimestamp: "2026-03-06T10:04:50.000Z",
+      lastCodexMessage: "Working",
+      turnCount: 3,
+      codexInputTokens: 10,
+      codexOutputTokens: 5,
+      codexTotalTokens: 15,
+    });
+    state.running["issue-1"] = entry;
+
+    const snapshot = buildRuntimeSnapshot(state, { now });
+
+    // For single-stage, first_dispatched_at falls back to started_at
+    expect(snapshot.running[0]!.first_dispatched_at).toBe("2026-03-06T10:00:00.000Z");
+  });
+});
+
+describe("formatEasternTimestamp", () => {
+  it("formats a UTC date to Eastern time with ET suffix", () => {
+    // 2026-03-06 is in EST (UTC-5)
+    const result = formatEasternTimestamp(new Date("2026-03-06T15:30:45.000Z"));
+    expect(result).toContain("10:30:45");
+    expect(result).toContain("AM");
+    expect(result).toContain("ET");
+  });
+
+  it("handles EDT dates correctly", () => {
+    // 2026-07-15 is in EDT (UTC-4)
+    const result = formatEasternTimestamp(new Date("2026-07-15T18:00:00.000Z"));
+    expect(result).toContain("2:00:00");
+    expect(result).toContain("PM");
+    expect(result).toContain("ET");
+  });
+
+  it("returns n/a for invalid dates", () => {
+    expect(formatEasternTimestamp(new Date("invalid"))).toBe("n/a");
   });
 });
 

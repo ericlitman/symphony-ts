@@ -279,6 +279,8 @@ describe("dashboard server", () => {
       counts: {
         running: 2,
         retrying: 1,
+        completed: 0,
+        failed: 0,
       },
     };
     emitUpdate();
@@ -442,7 +444,7 @@ describe("dashboard server", () => {
   it("renders an empty state for the running sessions table when there are no running sessions", async () => {
     const emptySnapshot: RuntimeSnapshot = {
       ...createSnapshot(),
-      counts: { running: 0, retrying: 0 },
+      counts: { running: 0, retrying: 0, completed: 0, failed: 0 },
       running: [],
       retrying: [],
     };
@@ -508,11 +510,14 @@ function createSnapshot(): RuntimeSnapshot {
     counts: {
       running: 1,
       retrying: 1,
+      completed: 0,
+      failed: 0,
     },
     running: [
       {
         issue_id: "issue-1",
         issue_identifier: "ABC-123",
+        issue_title: "ABC-123",
         state: "In Progress",
         pipeline_stage: null,
         activity_summary: "Working on tests",
