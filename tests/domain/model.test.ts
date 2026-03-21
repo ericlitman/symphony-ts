@@ -200,7 +200,8 @@ describe("ExecutionHistory", () => {
     expect(state.issueExecutionHistory["issue-1"]).toHaveLength(4);
 
     // Simulate cleanup when issue reaches Done terminal state
-    state.issueExecutionHistory["issue-1"] = undefined;
+    // biome-ignore lint/performance/noDelete: delete required here - Record type doesn't accept undefined
+    delete state.issueExecutionHistory["issue-1"];
     expect(state.issueExecutionHistory["issue-1"]).toBeUndefined();
   });
 });

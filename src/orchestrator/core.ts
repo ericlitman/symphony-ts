@@ -789,7 +789,8 @@ export class OrchestratorCore {
     stage: StageDefinition,
   ): Promise<void> {
     try {
-      const result = await this.runEnsembleGate?.({ issue, stage });
+      // biome-ignore lint/style/noNonNullAssertion: runEnsembleGate is guaranteed to be set when this method is called
+      const result = await this.runEnsembleGate!({ issue, stage });
 
       if (result.aggregate === "pass") {
         const nextStage = this.approveGate(issue.id);
