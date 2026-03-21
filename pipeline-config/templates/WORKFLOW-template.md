@@ -225,7 +225,7 @@ stages:
   investigate:
     type: agent
     runner: claude-code
-    model: claude-sonnet-4-5
+    model: claude-opus-4-6
     max_turns: 8
     linear_state: In Progress
     mcp_servers:
@@ -239,7 +239,7 @@ stages:
   implement:
     type: agent
     runner: claude-code
-    model: claude-sonnet-4-5
+    model: claude-opus-4-6
     max_turns: 30
     mcp_servers:
       code-review-graph:
