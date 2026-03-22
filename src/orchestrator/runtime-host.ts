@@ -18,7 +18,6 @@ import { WorkflowWatcher } from "../config/workflow-watch.js";
 import type { Issue, RetryEntry, RunningEntry } from "../domain/model.js";
 import { ERROR_CODES } from "../errors/codes.js";
 import { formatEasternTimestamp } from "../logging/format-timestamp.js";
-import { getDisplayVersion } from "../version.js";
 import {
   type RuntimeSnapshot,
   buildRuntimeSnapshot,
@@ -38,6 +37,7 @@ import { createRunnerFromConfig, isAiSdkRunner } from "../runners/factory.js";
 import type { RunnerKind } from "../runners/types.js";
 import { LinearTrackerClient } from "../tracker/linear-client.js";
 import type { IssueTracker } from "../tracker/tracker.js";
+import { getDisplayVersion } from "../version.js";
 import { WorkspaceHookRunner } from "../workspace/hooks.js";
 import { WorkspaceManager } from "../workspace/workspace-manager.js";
 import type {
