@@ -13,8 +13,7 @@ PLIST_PATH="$HOME/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/slack-bridge"
 ENV_FILE="${SLACK_BRIDGE_ENV_FILE:-$SYMPHONY_ROOT/.env}"
 NODE_BIN="${SLACK_BRIDGE_NODE:-$(which node 2>/dev/null || echo /opt/homebrew/bin/node)}"
-# TODO: Update entry point once the Slack bridge has its own CLI entry
-CLI_JS="$SYMPHONY_ROOT/dist/src/cli/main.js"
+CLI_JS="$SYMPHONY_ROOT/dist/src/slack-bot/server.js"
 
 # Colors (disabled if not a terminal)
 if [[ -t 1 ]]; then
