@@ -20,6 +20,7 @@ import {
 import { formatEasternTimestamp } from "../logging/format-timestamp.js";
 import {
   addEndedSessionRuntime,
+  addPipelineActivity,
   applyCodexEventToOrchestratorState,
 } from "../logging/session-metrics.js";
 import type { IssueStateSnapshot, IssueTracker } from "../tracker/tracker.js";
@@ -33,7 +34,12 @@ import {
 const CONTINUATION_RETRY_DELAY_MS = 1_000;
 const FAILURE_RETRY_BASE_DELAY_MS = 10_000;
 
-export type WorkerExitOutcome = "normal" | "abnormal";
+export type WorkerExitOutcome =
+  | "normal"
+  | "abnormal"
+  | "failed_to_start"
+  | "timed_out"
+  | "error";
 
 export type StopReason = "terminal_state" | "inactive_state" | "stall_timeout";
 
@@ -406,6 +412,13 @@ export class OrchestratorCore {
     const endedAt = input.endedAt ?? this.now();
     addEndedSessionRuntime(this.state, runningEntry.startedAt, endedAt);
 
+    // Classify "abnormal" into a more descriptive outcome for stage records
+    const classifiedOutcome = classifyExitOutcome(
+      input.outcome,
+      runningEntry.turnCount,
+      input.reason,
+    );
+
     // Append a StageRecord to execution history for this completed stage.
     const stageName = this.state.issueStages[input.issueId];
     if (stageName !== undefined) {
@@ -414,7 +427,7 @@ export class OrchestratorCore {
         durationMs: endedAt.getTime() - Date.parse(runningEntry.startedAt),
         totalTokens: runningEntry.totalStageTotalTokens,
         turns: runningEntry.turnCount,
-        outcome: input.outcome,
+        outcome: classifiedOutcome,
       };
       let history = this.state.issueExecutionHistory[input.issueId];
       if (history === undefined) {
@@ -567,6 +580,10 @@ export class OrchestratorCore {
 
     // Move to the next stage
     this.state.issueStages[issueId] = nextStageName;
+    const runningEntry = this.state.running[issueId];
+    if (runningEntry !== undefined) {
+      addPipelineActivity(runningEntry, "stage_transition", `Stage → ${nextStageName}`);
+    }
     return "advanced";
   }
 
@@ -1359,7 +1376,7 @@ export class OrchestratorCore {
         stageName,
         reworkCount,
       });
-      this.state.running[issue.id] = {
+      const runEntry: RunningEntry = {
         ...createEmptyLiveSession(),
         issue,
         identifier: issue.identifier,
@@ -1368,6 +1385,19 @@ export class OrchestratorCore {
         workerHandle: spawned.workerHandle,
         monitorHandle: spawned.monitorHandle,
       };
+      this.state.running[issue.id] = runEntry;
+      addPipelineActivity(
+        runEntry,
+        "session_start",
+        `${stageName ?? "default"} stage started`,
+      );
+      if (stage?.linearState != null) {
+        addPipelineActivity(
+          runEntry,
+          "state_change",
+          `Linear state → ${stage.linearState}`,
+        );
+      }
       this.state.claimed.add(issue.id);
       this.clearRetryEntry(issue.id);
       return true;
@@ -1691,6 +1721,32 @@ function parseEventTimestamp(
 
 function toNormalizedStateSet(states: readonly string[]): Set<string> {
   return new Set(states.map((state) => normalizeIssueState(state)));
+}
+
+export function classifyExitOutcome(
+  outcome: WorkerExitOutcome,
+  turnCount: number,
+  reason: string | undefined,
+): string {
+  if (outcome === "normal") {
+    return "normal";
+  }
+  // Already classified — pass through
+  if (
+    outcome === "failed_to_start" ||
+    outcome === "timed_out" ||
+    outcome === "error"
+  ) {
+    return outcome;
+  }
+  // Classify "abnormal" based on context
+  if (turnCount === 0) {
+    return "failed_to_start";
+  }
+  if (reason !== undefined && reason.includes("stall_timeout")) {
+    return "timed_out";
+  }
+  return "error";
 }
 
 function defaultTimerScheduler(): TimerScheduler {

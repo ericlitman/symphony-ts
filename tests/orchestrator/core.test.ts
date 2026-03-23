@@ -1809,7 +1809,7 @@ describe("execution history stage records", () => {
       orchestrator.getState().issueExecutionHistory["1"];
     expect(historyAfterSecond).toHaveLength(2);
     expect(historyAfterSecond![1]!.stageName).toBe("implement");
-    expect(historyAfterSecond![1]!.outcome).toBe("abnormal");
+    expect(historyAfterSecond![1]!.outcome).toBe("failed_to_start");
   });
 
   it("does not append a stage record when no stage is set for the issue", async () => {
