@@ -608,8 +608,7 @@ function computeEfficiencyScorecard(records) {
   const outputRatio = totalTotal > 0 ? (totalOutput / totalTotal) * 100 : 0;
 
   // Wasted context: no_cache / input * 100
-  const wastedContext =
-    totalInput > 0 ? (totalNoCache / totalInput) * 100 : 0;
+  const wastedContext = totalInput > 0 ? (totalNoCache / totalInput) * 100 : 0;
 
   // Tokens per turn
   const tokensPerTurn = totalTurns > 0 ? totalTotal / totalTurns : 0;
@@ -631,9 +630,7 @@ function computeEfficiencyScorecard(records) {
     (c) => c > 1,
   ).length;
   const firstPassRate =
-    totalUniqueIssues > 0
-      ? (1 - reworkIssues / totalUniqueIssues) * 100
-      : 100;
+    totalUniqueIssues > 0 ? (1 - reworkIssues / totalUniqueIssues) * 100 : 100;
 
   // Failure rate per stage type
   const stageTotal = {};
@@ -750,16 +747,8 @@ function buildExecutiveSummary(records, spanDays, now) {
       recs.reduce((s, r) => s + (r.total_total_tokens ?? 0), 0);
     const stageFn = (recs) => recs.length;
 
-    summary.total_tokens.wow_delta_pct = computeWowDelta(
-      records,
-      tokenFn,
-      now,
-    );
-    summary.total_stages.wow_delta_pct = computeWowDelta(
-      records,
-      stageFn,
-      now,
-    );
+    summary.total_tokens.wow_delta_pct = computeWowDelta(records, tokenFn, now);
+    summary.total_stages.wow_delta_pct = computeWowDelta(records, stageFn, now);
   }
 
   return summary;
@@ -1128,8 +1117,7 @@ function runAnalyze() {
     const result = {
       cold_start: true,
       cold_start_tier: "<7d",
-      message:
-        "No token history data available",
+      message: "No token history data available",
       efficiency_scorecard: {
         cache_efficiency: { current: 0, trend_7d: 0, trend_30d: 0 },
         output_ratio: { current: 0, trend_7d: 0, trend_30d: 0 },
@@ -1197,13 +1185,9 @@ function runAnalyze() {
     per_ticket_trend: perTicketTrend,
     per_product: perProduct,
     inflections:
-      tier === "<7d"
-        ? { status: "insufficient data", items: [] }
-        : inflections,
+      tier === "<7d" ? { status: "insufficient data", items: [] } : inflections,
     outliers:
-      tier === "<7d"
-        ? { status: "insufficient data", items: [] }
-        : outliers,
+      tier === "<7d" ? { status: "insufficient data", items: [] } : outliers,
   };
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

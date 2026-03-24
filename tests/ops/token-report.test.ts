@@ -444,7 +444,7 @@ function writeTokenHistory(
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(join(dataDir, "linear-cache"), { recursive: true });
   const path = join(dataDir, "token-history.jsonl");
-  writeFileSync(path, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  writeFileSync(path, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
 }
 
 function writeConfigHistory(
@@ -454,7 +454,7 @@ function writeConfigHistory(
   const dataDir = join(symphonyHome, "data");
   mkdirSync(dataDir, { recursive: true });
   const path = join(dataDir, "config-history.jsonl");
-  writeFileSync(path, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  writeFileSync(path, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
 }
 
 function runAnalyze(
@@ -550,9 +550,7 @@ describe("token-report.mjs analyze", () => {
   it("failed stages excluded from efficiency but included in spend", () => {
     const completed = Array.from({ length: 20 }, (_, i) =>
       makeTokenRecord({
-        timestamp: new Date(
-          Date.now() - i * 24 * 60 * 60 * 1000,
-        ).toISOString(),
+        timestamp: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
         stage_name: "implement",
         outcome: "completed",
         issue_identifier: `SYMPH-${300 + i}`,
@@ -653,9 +651,7 @@ describe("token-report.mjs analyze", () => {
         ).toISOString(),
       }),
       makeConfigSnapshot({
-        timestamp: new Date(
-          Date.now() - 5 * 24 * 60 * 60 * 1000,
-        ).toISOString(),
+        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
         config_hashes: { "pipeline-config/review/SKILL.md": "changed123" },
       }),
     ]);
@@ -672,7 +668,9 @@ describe("token-report.mjs analyze", () => {
 
     // Config changes should be present
     expect(result.per_stage_trend.implement.config_changes).toBeDefined();
-    expect(result.per_stage_trend.implement.config_changes.length).toBeGreaterThanOrEqual(1);
+    expect(
+      result.per_stage_trend.implement.config_changes.length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("per-ticket cost trend with median and mean", () => {
