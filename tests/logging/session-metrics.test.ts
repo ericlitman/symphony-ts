@@ -627,9 +627,9 @@ describe("session metrics", () => {
 
   describe("unknown tool types show arguments", () => {
     it("extracts first string-valued argument for unknown tools", () => {
-      expect(buildActivityContext("TodoWrite", { content: "Fix the bug" })).toBe(
-        "Fix the bug",
-      );
+      expect(
+        buildActivityContext("TodoWrite", { content: "Fix the bug" }),
+      ).toBe("Fix the bug");
     });
 
     it("truncates long string arguments to 60 chars", () => {
