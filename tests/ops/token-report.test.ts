@@ -7,30 +7,37 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { randomBytes } from "node:crypto";
-import { describe, it, beforeEach, afterEach, expect } from "vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, "../../ops/token-report.mjs");
 const NODE_BIN = process.execPath;
 
 function tmpDir() {
-  const dir = join(tmpdir(), `token-report-test-${randomBytes(6).toString("hex")}`);
+  const dir = join(
+    tmpdir(),
+    `token-report-test-${randomBytes(6).toString("hex")}`,
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function runExtract(symphonyHome: string, logDir: string, extraEnv: Record<string, string> = {}) {
+function runExtract(
+  symphonyHome: string,
+  logDir: string,
+  extraEnv: Record<string, string> = {},
+) {
   const env = {
     ...process.env,
     SYMPHONY_HOME: symphonyHome,
@@ -46,7 +53,11 @@ function runExtract(symphonyHome: string, logDir: string, extraEnv: Record<strin
   });
 }
 
-function runExtractWithStderr(symphonyHome: string, logDir: string, extraEnv: Record<string, string> = {}) {
+function runExtractWithStderr(
+  symphonyHome: string,
+  logDir: string,
+  extraEnv: Record<string, string> = {},
+) {
   const env = {
     ...process.env,
     SYMPHONY_HOME: symphonyHome,
@@ -125,10 +136,18 @@ describe("token-report.mjs extract", () => {
     for (const product of ["product-a", "product-b"]) {
       const dir = join(logDir, product);
       mkdirSync(dir, { recursive: true });
-      const events = product === "product-a"
-        ? [makeStageEvent({ stage_name: "plan" }), makeStageEvent({ stage_name: "implement" }), makeStageEvent({ stage_name: "review" })]
-        : [makeStageEvent({ stage_name: "plan" }), makeStageEvent({ stage_name: "implement" })];
-      writeFileSync(join(dir, "symphony.jsonl"), events.join("\n") + "\n");
+      const events =
+        product === "product-a"
+          ? [
+              makeStageEvent({ stage_name: "plan" }),
+              makeStageEvent({ stage_name: "implement" }),
+              makeStageEvent({ stage_name: "review" }),
+            ]
+          : [
+              makeStageEvent({ stage_name: "plan" }),
+              makeStageEvent({ stage_name: "implement" }),
+            ];
+      writeFileSync(join(dir, "symphony.jsonl"), `${events.join("\n")}\n`);
     }
 
     runExtract(symphonyHome, logDir);
@@ -164,11 +183,13 @@ describe("token-report.mjs extract", () => {
       makeStageEvent({ outcome: "failed", stage_name: "s4" }),
       makeStageEvent({ outcome: "failed", stage_name: "s5" }),
     ];
-    writeFileSync(join(dir, "symphony.jsonl"), events.join("\n") + "\n");
+    writeFileSync(join(dir, "symphony.jsonl"), `${events.join("\n")}\n`);
 
     runExtract(symphonyHome, logDir);
 
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(5);
     const completed = records.filter((r) => r.outcome === "completed");
     const failed = records.filter((r) => r.outcome === "failed");
@@ -181,20 +202,26 @@ describe("token-report.mjs extract", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "symphony.jsonl"),
-      [makeStageEvent(), makeStageEvent({ stage_name: "review" })].join("\n") + "\n",
+      `${[makeStageEvent(), makeStageEvent({ stage_name: "review" })].join("\n")}\n`,
     );
 
     runExtract(symphonyHome, logDir);
-    const countBefore = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl")).length;
+    const countBefore = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    ).length;
 
     // Run again — no new events
     runExtract(symphonyHome, logDir);
-    const countAfter = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl")).length;
+    const countAfter = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    ).length;
 
     expect(countAfter).toBe(countBefore);
 
     // Config history gains exactly 1 new snapshot
-    const configs = readJsonlFile(join(symphonyHome, "data", "config-history.jsonl"));
+    const configs = readJsonlFile(
+      join(symphonyHome, "data", "config-history.jsonl"),
+    );
     expect(configs).toHaveLength(2);
   });
 
@@ -206,17 +233,21 @@ describe("token-report.mjs extract", () => {
     // Write 3 events and extract
     writeFileSync(
       logPath,
-      [makeStageEvent({ stage_name: "s1" }), makeStageEvent({ stage_name: "s2" }), makeStageEvent({ stage_name: "s3" })].join("\n") + "\n",
+      `${[makeStageEvent({ stage_name: "s1" }), makeStageEvent({ stage_name: "s2" }), makeStageEvent({ stage_name: "s3" })].join("\n")}\n`,
     );
     runExtract(symphonyHome, logDir);
-    expect(readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"))).toHaveLength(3);
+    expect(
+      readJsonlFile(join(symphonyHome, "data", "token-history.jsonl")),
+    ).toHaveLength(3);
 
     // Truncate the file and write new event
-    writeFileSync(logPath, makeStageEvent({ stage_name: "s4" }) + "\n");
+    writeFileSync(logPath, `${makeStageEvent({ stage_name: "s4" })}\n`);
 
     // Extract should detect truncation and re-read
     runExtract(symphonyHome, logDir);
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(4);
     expect(records[3]!.stage_name).toBe("s4");
   });
@@ -228,18 +259,25 @@ describe("token-report.mjs extract", () => {
 
     // Write one complete event + one partial
     const completeEvent = makeStageEvent({ stage_name: "complete" });
-    writeFileSync(logPath, completeEvent + "\n" + '{"event":"stage_com');
+    writeFileSync(logPath, `${completeEvent}\n{"event":"stage_com`);
 
     runExtract(symphonyHome, logDir);
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(1);
     expect(records[0]!.stage_name).toBe("complete");
 
     // Now complete the partial line and add a newline
-    writeFileSync(logPath, completeEvent + "\n" + makeStageEvent({ stage_name: "was-partial" }) + "\n");
+    writeFileSync(
+      logPath,
+      `${completeEvent}\n${makeStageEvent({ stage_name: "was-partial" })}\n`,
+    );
 
     runExtract(symphonyHome, logDir);
-    const records2 = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records2 = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     // Should pick up the now-completed line
     expect(records2).toHaveLength(2);
     expect(records2[1]!.stage_name).toBe("was-partial");
@@ -258,7 +296,7 @@ describe("token-report.mjs extract", () => {
     lines.splice(3, 0, "THIS IS NOT JSON");
     lines.splice(7, 0, "{broken json{{");
 
-    writeFileSync(logPath, lines.join("\n") + "\n");
+    writeFileSync(logPath, `${lines.join("\n")}\n`);
 
     // Run with captured stderr
     const env = {
@@ -278,7 +316,9 @@ describe("token-report.mjs extract", () => {
     }
 
     // Fallback: if the above didn't throw, read normally
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(10);
   });
 
@@ -294,7 +334,9 @@ describe("token-report.mjs extract", () => {
       const content = readFileSync(historyPath, "utf-8").trim();
       if (content.length > 0) {
         const records = content.split("\n").map((l) => JSON.parse(l));
-        const emptyRecords = records.filter((r) => r.product === "emptyproduct");
+        const emptyRecords = records.filter(
+          (r) => r.product === "emptyproduct",
+        );
         expect(emptyRecords).toHaveLength(0);
       }
     }
@@ -305,12 +347,14 @@ describe("token-report.mjs extract", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "symphony.jsonl"),
-      makeStageEvent({ issue_identifier: "SYMPH-999" }) + "\n",
+      `${makeStageEvent({ issue_identifier: "SYMPH-999" })}\n`,
     );
 
     runExtract(symphonyHome, logDir, { LINEAR_API_KEY: "" });
 
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(1);
     expect(records[0]!.issue_title).toBeNull();
   });
@@ -320,19 +364,21 @@ describe("token-report.mjs extract", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "symphony.jsonl"),
-      makeStageEvent({
+      `${makeStageEvent({
         total_input_tokens: 5000,
         total_output_tokens: 3000,
         total_total_tokens: 8000,
         no_cache_tokens: 1500,
         total_cache_read_tokens: 2000,
         total_cache_write_tokens: 500,
-      }) + "\n",
+      })}\n`,
     );
 
     runExtract(symphonyHome, logDir);
 
-    const records = readJsonlFile(join(symphonyHome, "data", "token-history.jsonl"));
+    const records = readJsonlFile(
+      join(symphonyHome, "data", "token-history.jsonl"),
+    );
     expect(records).toHaveLength(1);
     const r = records[0]!;
     expect(r.product).toBe("myproduct");

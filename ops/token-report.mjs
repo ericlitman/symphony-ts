@@ -14,22 +14,22 @@
  * SYMPH-129
  */
 
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
-  writeFileSync,
-  appendFileSync,
+  readSync,
   readdirSync,
   statSync,
-  openSync,
-  readSync,
-  closeSync,
+  writeFileSync,
 } from "node:fs";
-import { join, resolve, basename } from "node:path";
 import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -37,7 +37,8 @@ import { homedir } from "node:os";
 
 const SYMPHONY_HOME = process.env.SYMPHONY_HOME || join(homedir(), ".symphony");
 const SYMPHONY_LOG_DIR =
-  process.env.SYMPHONY_LOG_DIR || join(homedir(), "Library", "Logs", "symphony");
+  process.env.SYMPHONY_LOG_DIR ||
+  join(homedir(), "Library", "Logs", "symphony");
 
 const DATA_DIR = join(SYMPHONY_HOME, "data");
 const HWM_DIR = join(DATA_DIR, ".hwm");
@@ -68,7 +69,7 @@ function hwmKeyForPath(logPath) {
  * Read HWM state for a log file. Returns { inode, offset }.
  */
 function readHwm(logPath) {
-  const hwmFile = join(HWM_DIR, hwmKeyForPath(logPath) + ".json");
+  const hwmFile = join(HWM_DIR, `${hwmKeyForPath(logPath)}.json`);
   if (!existsSync(hwmFile)) return { inode: 0, offset: 0 };
   try {
     return JSON.parse(readFileSync(hwmFile, "utf-8"));
@@ -81,8 +82,8 @@ function readHwm(logPath) {
  * Write HWM state for a log file.
  */
 function writeHwm(logPath, state) {
-  const hwmFile = join(HWM_DIR, hwmKeyForPath(logPath) + ".json");
-  writeFileSync(hwmFile, JSON.stringify(state) + "\n");
+  const hwmFile = join(HWM_DIR, `${hwmKeyForPath(logPath)}.json`);
+  writeFileSync(hwmFile, `${JSON.stringify(state)}\n`);
 }
 
 /**
@@ -128,13 +129,17 @@ function readNewLines(logPath) {
 
   // Inode change → log rotation → reset to beginning
   if (currentInode !== hwm.inode && hwm.inode !== 0) {
-    info(`Inode changed for ${logPath} (${hwm.inode} → ${currentInode}), resetting HWM`);
+    info(
+      `Inode changed for ${logPath} (${hwm.inode} → ${currentInode}), resetting HWM`,
+    );
     startOffset = 0;
   }
 
   // File truncated → reset to beginning
   if (currentSize < startOffset) {
-    info(`File truncated for ${logPath} (size ${currentSize} < offset ${startOffset}), resetting HWM`);
+    info(
+      `File truncated for ${logPath} (size ${currentSize} < offset ${startOffset}), resetting HWM`,
+    );
     startOffset = 0;
   }
 
@@ -219,7 +224,7 @@ function getLinearTitle(issueIdentifier) {
       { stdio: ["pipe", "pipe", "pipe"], timeout: 15000, encoding: "utf-8" },
     );
     const data = JSON.parse(out);
-    writeFileSync(cacheFile, JSON.stringify(data, null, 2) + "\n");
+    writeFileSync(cacheFile, `${JSON.stringify(data, null, 2)}\n`);
     return data.title ?? null;
   } catch (err) {
     warn(`Failed to fetch Linear title for ${issueIdentifier}: ${err.message}`);
@@ -335,7 +340,7 @@ function runExtract() {
 
     // Append to token-history.jsonl
     if (records.length > 0) {
-      const jsonlData = records.map((r) => JSON.stringify(r)).join("\n") + "\n";
+      const jsonlData = `${records.map((r) => JSON.stringify(r)).join("\n")}\n`;
       appendFileSync(TOKEN_HISTORY_PATH, jsonlData);
       totalExtracted += records.length;
     }
@@ -347,7 +352,9 @@ function runExtract() {
   // Snapshot config hashes
   snapshotConfigHashes();
 
-  info(`Extraction complete: ${totalExtracted} records extracted, ${totalSkipped} lines skipped`);
+  info(
+    `Extraction complete: ${totalExtracted} records extracted, ${totalSkipped} lines skipped`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -387,9 +394,12 @@ function snapshotConfigHashes() {
   const hashes = {};
   for (const file of [...configFiles, ...skillFiles]) {
     try {
-      const relPath = file.replace(symphonyRoot + "/", "");
+      const relPath = file.replace(`${symphonyRoot}/`, "");
       const content = readFileSync(file);
-      hashes[relPath] = createHash("sha256").update(content).digest("hex").slice(0, 16);
+      hashes[relPath] = createHash("sha256")
+        .update(content)
+        .digest("hex")
+        .slice(0, 16);
     } catch {
       // Skip unreadable files
     }
@@ -401,7 +411,7 @@ function snapshotConfigHashes() {
     file_count: Object.keys(hashes).length,
   };
 
-  appendFileSync(CONFIG_HISTORY_PATH, JSON.stringify(snapshot) + "\n");
+  appendFileSync(CONFIG_HISTORY_PATH, `${JSON.stringify(snapshot)}\n`);
 }
 
 function gatherFiles(dir, out) {
@@ -410,7 +420,12 @@ function gatherFiles(dir, out) {
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
+        if (
+          entry.name === "node_modules" ||
+          entry.name === ".git" ||
+          entry.name === "dist"
+        )
+          continue;
         gatherFiles(fullPath, out);
       } else {
         out.push(fullPath);
@@ -427,7 +442,12 @@ function gatherFilesByPattern(dir, pattern, out) {
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
+        if (
+          entry.name === "node_modules" ||
+          entry.name === ".git" ||
+          entry.name === "dist"
+        )
+          continue;
         gatherFilesByPattern(fullPath, pattern, out);
       } else if (entry.name === pattern) {
         out.push(fullPath);
@@ -450,7 +470,13 @@ const subcommand = process.argv[2];
 
 if (!subcommand || subcommand === "extract") {
   // Ensure directories exist
-  for (const dir of [DATA_DIR, HWM_DIR, LINEAR_CACHE_DIR, join(SYMPHONY_HOME, "logs"), join(SYMPHONY_HOME, "reports")]) {
+  for (const dir of [
+    DATA_DIR,
+    HWM_DIR,
+    LINEAR_CACHE_DIR,
+    join(SYMPHONY_HOME, "logs"),
+    join(SYMPHONY_HOME, "reports"),
+  ]) {
     mkdirSync(dir, { recursive: true });
   }
   runExtract();
@@ -459,6 +485,8 @@ if (!subcommand || subcommand === "extract") {
   warn("analyze subcommand not yet implemented");
   process.exit(0);
 } else {
-  process.stderr.write(`Unknown subcommand: ${subcommand}\nUsage: token-report.mjs [extract|analyze]\n`);
+  process.stderr.write(
+    `Unknown subcommand: ${subcommand}\nUsage: token-report.mjs [extract|analyze]\n`,
+  );
   process.exit(1);
 }
