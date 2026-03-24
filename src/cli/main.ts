@@ -13,6 +13,10 @@ import {
   type RuntimeServiceHandle,
   startRuntimeService,
 } from "../orchestrator/runtime-host.js";
+import {
+  PipelineNotifier,
+  createSlackPoster,
+} from "../orchestrator/pipeline-notifier.js";
 import { getDisplayVersion } from "../version.js";
 
 export const CLI_ACKNOWLEDGEMENT_FLAG = "--acknowledge-high-trust-preview";
@@ -158,9 +162,20 @@ export function applyCliOverrides(
 export async function startCliHost(
   input: StartCliHostInput,
 ): Promise<RuntimeServiceHandle> {
+  const slackChannel = input.runtime.config.server.slackNotifyChannel;
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  const notifier =
+    slackChannel !== null && slackToken !== undefined
+      ? new PipelineNotifier({
+          channel: slackChannel,
+          poster: createSlackPoster({ botToken: slackToken }),
+        })
+      : null;
+
   return startRuntimeService({
     config: input.runtime.config,
     logsRoot: input.runtime.logsRoot,
+    notifier,
   });
 }
 

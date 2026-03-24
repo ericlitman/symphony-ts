@@ -530,11 +530,20 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
       },
     );
 
-    const liveSession = execution.lastResult?.liveSession;
+    // Pre-capture data that advanceStage() deletes during onWorkerExit()
+    const state = this.orchestrator.getState();
+    const runningEntry = state.running[execution.issueId];
+
+    // Compute durationMs using runAttempt.startedAt if available (normal completion case),
+    // falling back to runningEntry.startedAt for abnormal cases (stall timeout where runAttempt is null).
     const durationMs = execution.lastResult?.runAttempt?.startedAt
       ? this.now().getTime() -
         new Date(execution.lastResult.runAttempt.startedAt).getTime()
-      : 0;
+      : runningEntry?.startedAt
+        ? this.now().getTime() - new Date(runningEntry.startedAt).getTime()
+        : 0;
+
+    const liveSession = execution.lastResult?.liveSession;
     await this.logger?.log("info", "stage_completed", "Stage completed.", {
       issue_id: execution.issueId,
       issue_identifier: execution.issueIdentifier,
@@ -587,14 +596,12 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
           ? fallbackMessage
           : undefined) ?? undefined;
 
-    // Pre-capture data that advanceStage() deletes during onWorkerExit()
-    const state = this.orchestrator.getState();
+    // Capture remaining state data
     const preHistory: ExecutionHistory = [
       ...(state.issueExecutionHistory[execution.issueId] ?? []),
     ];
     const preReworkCount =
       state.issueReworkCounts[execution.issueId] ?? 0;
-    const runningEntry = state.running[execution.issueId];
     const capturedTitle = runningEntry?.issue.title ?? execution.issueIdentifier;
     const capturedUrl = runningEntry?.issue.url ?? null;
     const capturedRetryAttempt = runningEntry?.retryAttempt ?? null;
@@ -613,10 +620,18 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
         : { agentMessage }),
     });
 
+    // Re-read execution history after onWorkerExit appended the final stage record.
+    // For terminal cases (completed/failed), history is preserved.
+    // For continuations, history is deleted — but we don't notify on continuations.
+    const postHistory: ExecutionHistory = [
+      ...(this.orchestrator.getState().issueExecutionHistory[execution.issueId] ??
+        preHistory),
+    ];
+
     // Fire notifications after state update
     if (this.notifier !== null) {
       this.fireWorkerNotification(execution, input, {
-        preHistory,
+        preHistory: postHistory,
         preReworkCount,
         capturedTitle,
         capturedUrl,
@@ -657,13 +672,16 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
     const nowFailed =
       state.failed.has(execution.issueId) && !captured.preFailedHas;
     if (nowFailed) {
+      const maxRetries = this.config.agent.maxRetryAttempts;
+      const retriesExhausted =
+        (captured.capturedRetryAttempt ?? 0) >= maxRetries;
       notifier.notify({
         type: "issue_failed",
         issueIdentifier: execution.issueIdentifier,
         issueTitle: captured.capturedTitle,
         issueUrl: captured.capturedUrl,
         failureReason: input.reason ?? null,
-        retriesExhausted: true,
+        retriesExhausted,
         retryAttempt: captured.capturedRetryAttempt,
       });
       return;
