@@ -183,7 +183,8 @@ function deriveLastToolCall(
   recentActivity: RecentActivityEntry[],
 ): string | null {
   if (recentActivity.length === 0) return null;
-  const last = recentActivity[recentActivity.length - 1]!;
+  const last = recentActivity[recentActivity.length - 1];
+  if (last === undefined) return null;
   return last.context ? `${last.toolName} ${last.context}` : last.toolName;
 }
 

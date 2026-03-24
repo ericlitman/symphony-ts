@@ -1077,9 +1077,15 @@ function renderRunningRows(snapshot: RuntimeSnapshot): string {
               <td>
                 <div class="detail-stack">
                   <span class="event-text" title="${escapeHtml(
-                    row.last_tool_call ?? row.activity_summary ?? row.last_event ?? "n/a",
+                    row.last_tool_call ??
+                      row.activity_summary ??
+                      row.last_event ??
+                      "n/a",
                   )}">${escapeHtml(
-                    row.last_tool_call ?? row.activity_summary ?? row.last_event ?? "n/a",
+                    row.last_tool_call ??
+                      row.activity_summary ??
+                      row.last_event ??
+                      "n/a",
                   )}</span>
                   <span class="muted event-meta">${escapeHtml(
                     row.last_event ?? "n/a",
