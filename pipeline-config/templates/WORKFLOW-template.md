@@ -437,6 +437,15 @@ Read ALL comments on this Linear issue starting with `## Review Findings`. These
 8. Open a PR targeting this repo (not its upstream fork parent) via `gh pr create --repo $(git remote get-url origin | sed "s|.*github.com/||;s|\.git$||")` with the issue description in the PR body. Include the Tool Output and SAST Output sections.
 9. Link the PR to the Linear issue by including `{{ issue.identifier }}` in the PR title or body.
 
+### Design Reference Bundles
+
+If a design reference exists at `pipeline-config/design-refs/{spec-identifier}/`, use these files to guide your implementation:
+
+- **`structure.md`** — Section hierarchy, dimensions, and font families. Read this first for orientation on the intended layout and information architecture.
+- **`sections/*.jsx`** — Starting-point Tailwind JSX markup for each section. Adapt to the target project's conventions and component patterns — do NOT copy verbatim.
+- **`styles.json`** — Design tokens (colors, typography scale, spacing, borders). Use these for exact values when styling components.
+- **`screenshot.png`** — Visual reference ONLY. Use for verification after rendering to confirm your implementation matches the intended design. Do not use as implementation input.
+
 ### Workpad (implement)
 Update the workpad comment at these milestones during implementation.
 **Preferred**: Edit your local `workpad.md` file and call `sync_workpad` with `issue_id`, `file_path`, and `comment_id` (from the investigate stage).
