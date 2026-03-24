@@ -1285,7 +1285,7 @@ function multiLineSvg(stageData, configChanges, opts = {}) {
   }
 
   const stages = Object.keys(stageData);
-  let allVals = [];
+  const allVals = [];
   for (const stage of stages) {
     const avg = stageData[stage].daily_avg ?? {};
     for (const d of sortedDates) {
@@ -1330,7 +1330,8 @@ function multiLineSvg(stageData, configChanges, opts = {}) {
     const pts = [];
     for (const d of sortedDates) {
       if (avg[d] != null) {
-        const x = padL + (sortedDates.indexOf(d) / (sortedDates.length - 1)) * chartW;
+        const x =
+          padL + (sortedDates.indexOf(d) / (sortedDates.length - 1)) * chartW;
         const y = padT + chartH - ((avg[d] - minY) / rangeY) * chartH;
         pts.push(`${round(x, 1)},${round(y, 1)}`);
       }
@@ -1372,10 +1373,14 @@ function renderHtml(analysis) {
   const sc = analysis.efficiency_scorecard ?? {};
   const perStageTrend = analysis.per_stage_trend ?? {};
   const perTicket = analysis.per_ticket_trend ?? {};
-  const outliers = Array.isArray(analysis.outliers) ? analysis.outliers : (analysis.outliers?.items ?? []);
+  const outliers = Array.isArray(analysis.outliers)
+    ? analysis.outliers
+    : (analysis.outliers?.items ?? []);
   const perStageSpend = analysis.per_stage_spend ?? {};
   const perProduct = analysis.per_product ?? {};
-  const inflections = Array.isArray(analysis.inflections) ? analysis.inflections : (analysis.inflections?.items ?? []);
+  const inflections = Array.isArray(analysis.inflections)
+    ? analysis.inflections
+    : (analysis.inflections?.items ?? []);
 
   // Compute tokens-per-issue median and mean from records
   const records = readJsonl(TOKEN_HISTORY_PATH);
@@ -1450,7 +1455,7 @@ function renderHtml(analysis) {
   // Config changes for multi-line chart
   const firstStageKey = Object.keys(perStageTrend)[0];
   const configChanges = firstStageKey
-    ? perStageTrend[firstStageKey].config_changes ?? []
+    ? (perStageTrend[firstStageKey].config_changes ?? [])
     : [];
 
   // Build issue leaderboard sorted by spend
@@ -1513,7 +1518,9 @@ function renderHtml(analysis) {
     const prevSc = computeEfficiencyScorecard(prev);
     if (prevSc.cache_efficiency === 0) return null;
     return round(
-      ((currSc.cache_efficiency - prevSc.cache_efficiency) / prevSc.cache_efficiency) * 100,
+      ((currSc.cache_efficiency - prevSc.cache_efficiency) /
+        prevSc.cache_efficiency) *
+        100,
       1,
     );
   })();
@@ -1710,7 +1717,7 @@ function renderHtml(analysis) {
   <span class="metric-value">${(() => {
     const fr = sc.failure_rate?.current ?? {};
     const rates = Object.values(fr);
-    return rates.length > 0 ? round(mean(rates), 1) + "%" : "0%";
+    return rates.length > 0 ? `${round(mean(rates), 1)}%` : "0%";
   })()}</span>
   <span class="metric-sparkline">${sparklineSvg(failureRateSeries, { stroke: "#f85149" })}</span>
 </div>
@@ -1719,11 +1726,19 @@ function renderHtml(analysis) {
 <h2>Per-Stage Utilization Trend</h2>
 <div class="chart-container">
 ${multiLineSvg(perStageTrend, configChanges)}
-${inflections.length > 0 ? inflections.map((inf) => `
+${
+  inflections.length > 0
+    ? inflections
+        .map(
+          (inf) => `
 <div class="inflection-panel">
   <div class="label">⚡ Inflection: ${escHtml(inf.stage)} — ${escHtml(inf.direction)} ${inf.pct_change}%</div>
-  <div style="color:var(--text-muted);font-size:0.85rem;margin-top:4px">7d avg: ${fmtNum(inf.avg_7d)} · 30d avg: ${fmtNum(inf.avg_30d)}${inf.attributions?.length > 0 ? " · " + inf.attributions.map((a) => escHtml(a.description)).join("; ") : ""}</div>
-</div>`).join("") : ""}
+  <div style="color:var(--text-muted);font-size:0.85rem;margin-top:4px">7d avg: ${fmtNum(inf.avg_7d)} · 30d avg: ${fmtNum(inf.avg_30d)}${inf.attributions?.length > 0 ? ` · ${inf.attributions.map((a) => escHtml(a.description)).join("; ")}` : ""}</div>
+</div>`,
+        )
+        .join("")
+    : ""
+}
 </div>
 
 <!-- Section 4: Per-Ticket Cost Trend -->
@@ -1735,25 +1750,41 @@ ${inflections.length > 0 ? inflections.map((inf) => `
 
 <!-- Section 5: Outlier Analysis -->
 <h2>Outlier Analysis</h2>
-${outliers.length === 0 ? '<p style="color:var(--text-muted)">No outliers detected (>2σ threshold)</p>' : outliers.map((o) => `
+${
+  outliers.length === 0
+    ? '<p style="color:var(--text-muted)">No outliers detected (>2σ threshold)</p>'
+    : outliers
+        .map(
+          (o) => `
 <div class="outlier-card">
   <div class="outlier-title"><a href="https://linear.app/issue/${escHtml(o.issue_identifier)}" target="_blank">${escHtml(o.issue_identifier)}</a> — ${escHtml(o.issue_title)} — ${fmtNum(o.total_tokens)} tokens (z=${o.z_score})</div>
   <div class="outlier-hypothesis">${escHtml(o.hypothesis ?? "No hypothesis available")}</div>
   ${o.parent ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-top:4px">Parent: ${escHtml(o.parent.identifier)} (${escHtml(o.parent.complexity)}, ${o.parent.task_count} tasks)</div>` : ""}
-</div>`).join("")}
+</div>`,
+        )
+        .join("")
+}
 
 <!-- Section 6: Issue Leaderboard -->
 <h2>Issue Leaderboard</h2>
 <table>
   <thead><tr><th>#</th><th>Issue</th><th>Title</th><th style="text-align:right">Tokens</th></tr></thead>
   <tbody>
-${leaderboard.slice(0, 25).map((item, i) => `    <tr><td>${i + 1}</td><td><a href="https://linear.app/issue/${escHtml(item.identifier)}" target="_blank">${escHtml(item.identifier)}</a></td><td>${escHtml(item.title)}</td><td style="text-align:right">${fmtNum(item.tokens)}</td></tr>`).join("\n")}
+${leaderboard
+  .slice(0, 25)
+  .map(
+    (item, i) =>
+      `    <tr><td>${i + 1}</td><td><a href="https://linear.app/issue/${escHtml(item.identifier)}" target="_blank">${escHtml(item.identifier)}</a></td><td>${escHtml(item.title)}</td><td style="text-align:right">${fmtNum(item.tokens)}</td></tr>`,
+  )
+  .join("\n")}
   </tbody>
 </table>
 
 <!-- Section 7: Stage Efficiency -->
 <h2>Stage Efficiency</h2>
-${Object.entries(perStageSpend).map(([stage, data]) => `
+${Object.entries(perStageSpend)
+  .map(
+    ([stage, data]) => `
 <div class="stage-card">
   <div class="stage-header">
     <span class="stage-name">${escHtml(stage)}</span>
@@ -1763,7 +1794,9 @@ ${Object.entries(perStageSpend).map(([stage, data]) => `
     <span style="color:var(--text-muted);font-size:0.85rem">30d trend:</span>
     ${sparklineSvg(stageSparklines[stage] ?? [], { stroke: "#58a6ff" })}
   </div>
-</div>`).join("")}
+</div>`,
+  )
+  .join("")}
 
 <!-- Section 8: Per-Product Breakdown -->
 <h2>Per-Product Breakdown</h2>
@@ -1771,7 +1804,9 @@ ${Object.entries(perStageSpend).map(([stage, data]) => `
   <thead><tr><th>Product</th><th style="text-align:right">Tokens</th><th style="text-align:right">Stages</th><th style="text-align:right">Issues</th><th>Share</th></tr></thead>
   <tbody>
 ${(() => {
-  const totalTokens = Object.values(perProduct).reduce((s, p) => s + (p.total_tokens ?? 0), 0) || 1;
+  const totalTokens =
+    Object.values(perProduct).reduce((s, p) => s + (p.total_tokens ?? 0), 0) ||
+    1;
   return Object.entries(perProduct)
     .sort((a, b) => (b[1].total_tokens ?? 0) - (a[1].total_tokens ?? 0))
     .map(([name, data]) => {
@@ -1820,8 +1855,12 @@ function runSlack() {
   const analysis = computeAnalysis();
   const es = analysis.executive_summary ?? {};
   const sc = analysis.efficiency_scorecard ?? {};
-  const outliers = Array.isArray(analysis.outliers) ? analysis.outliers : (analysis.outliers?.items ?? []);
-  const inflections = Array.isArray(analysis.inflections) ? analysis.inflections : (analysis.inflections?.items ?? []);
+  const outliers = Array.isArray(analysis.outliers)
+    ? analysis.outliers
+    : (analysis.outliers?.items ?? []);
+  const inflections = Array.isArray(analysis.inflections)
+    ? analysis.inflections
+    : (analysis.inflections?.items ?? []);
 
   // Compute tokens-per-issue
   const records = readJsonl(TOKEN_HISTORY_PATH);
@@ -1861,10 +1900,20 @@ function runSlack() {
   ];
 
   if (outliers.length > 0) {
-    lines.push(`⚠️ Outliers: ${outliers.slice(0, 3).map((o) => `${o.issue_identifier} (z=${o.z_score})`).join(", ")}`);
+    lines.push(
+      `⚠️ Outliers: ${outliers
+        .slice(0, 3)
+        .map((o) => `${o.issue_identifier} (z=${o.z_score})`)
+        .join(", ")}`,
+    );
   }
   if (inflections.length > 0) {
-    lines.push(`⚡ Inflections: ${inflections.slice(0, 3).map((inf) => `${inf.stage} ${inf.direction} ${inf.pct_change}%`).join(", ")}`);
+    lines.push(
+      `⚡ Inflections: ${inflections
+        .slice(0, 3)
+        .map((inf) => `${inf.stage} ${inf.direction} ${inf.pct_change}%`)
+        .join(", ")}`,
+    );
   }
 
   lines.push(`Top consumer: ${topConsumer}`);
@@ -1873,17 +1922,28 @@ function runSlack() {
   const payload = JSON.stringify({ text: lines.join("\n") });
 
   try {
-    execFileSync("curl", [
-      "-s", "-o", "/dev/null", "-w", "%{http_code}",
-      "-X", "POST",
-      webhookUrl,
-      "-H", "Content-type: application/json",
-      "-d", payload,
-    ], {
-      encoding: "utf-8",
-      timeout: 30000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    execFileSync(
+      "curl",
+      [
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-X",
+        "POST",
+        webhookUrl,
+        "-H",
+        "Content-type: application/json",
+        "-d",
+        payload,
+      ],
+      {
+        encoding: "utf-8",
+        timeout: 30000,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     info("Slack digest posted");
   } catch (err) {
     warn(`Slack post failed: ${err.message}`);
@@ -1895,9 +1955,14 @@ function runSlack() {
 // Rotate subcommand — SYMPH-131
 // ---------------------------------------------------------------------------
 
-import { createReadStream, createWriteStream, unlinkSync, utimesSync } from "node:fs";
-import { createGzip } from "node:zlib";
+import {
+  createReadStream,
+  createWriteStream,
+  unlinkSync,
+  utimesSync,
+} from "node:fs";
 import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
 
 /**
  * Log rotation: compress/delete old JSONL logs and HTML reports.
@@ -1996,7 +2061,13 @@ function ensureDirs(...dirs) {
 const subcommand = process.argv[2];
 
 if (!subcommand || subcommand === "extract") {
-  ensureDirs(DATA_DIR, HWM_DIR, LINEAR_CACHE_DIR, join(SYMPHONY_HOME, "logs"), REPORTS_DIR);
+  ensureDirs(
+    DATA_DIR,
+    HWM_DIR,
+    LINEAR_CACHE_DIR,
+    join(SYMPHONY_HOME, "logs"),
+    REPORTS_DIR,
+  );
   runExtract();
 } else if (subcommand === "analyze") {
   ensureDirs(DATA_DIR, LINEAR_CACHE_DIR);

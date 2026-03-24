@@ -1055,10 +1055,7 @@ describe("token-report.mjs render", () => {
 // Slack subcommand tests — SYMPH-131
 // ---------------------------------------------------------------------------
 
-function runSlack(
-  symphonyHome: string,
-  extraEnv: Record<string, string> = {},
-) {
+function runSlack(symphonyHome: string, extraEnv: Record<string, string> = {}) {
   const env = {
     ...process.env,
     SYMPHONY_HOME: symphonyHome,
@@ -1101,7 +1098,7 @@ describe("token-report.mjs slack", () => {
 
     const env: Record<string, string> = {};
     // Explicitly unset SLACK_WEBHOOK_URL
-    delete process.env.SLACK_WEBHOOK_URL;
+    process.env.SLACK_WEBHOOK_URL = undefined;
     const { exitCode, stderr } = runSlack(symphonyHome, env);
 
     expect(exitCode).toBe(0);
