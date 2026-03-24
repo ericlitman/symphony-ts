@@ -113,6 +113,10 @@ check_run_pipeline() {
   [[ -f "$RUN_PIPELINE" ]] || die "run-pipeline.sh not found at $RUN_PIPELINE"
 }
 
+check_linear_cli() {
+  command -v linear &>/dev/null || die "linear CLI is required but not found. Install it first."
+}
+
 # --- Flags ---
 
 DRY_RUN=false
@@ -189,21 +193,20 @@ ok "ports.json found"
 check_run_pipeline
 ok "run-pipeline.sh found"
 
+check_linear_cli
+ok "linear CLI available"
+
 echo ""
 
 # --- Step 1: Duplicate detection ---
 
 info "=== Step 1: Duplicate detection ==="
 
-if $DRY_RUN; then
-  info "[dry-run] Would check ports.json for existing product '$PRODUCT'"
-else
-  EXISTING_PORT="$(jq -r --arg p "$PRODUCT" '.[$p] // empty' "$PORTS_FILE")"
-  if [[ -n "$EXISTING_PORT" ]]; then
-    die "Product '$PRODUCT' already exists in ports.json (port: $EXISTING_PORT). Aborting to prevent duplicate onboarding."
-  fi
-  ok "Product '$PRODUCT' not found in ports.json — proceeding"
+EXISTING_PORT="$(jq -r --arg p "$PRODUCT" '.[$p] // empty' "$PORTS_FILE")"
+if [[ -n "$EXISTING_PORT" ]]; then
+  die "Product '$PRODUCT' already exists in ports.json (port: $EXISTING_PORT). Aborting to prevent duplicate onboarding."
 fi
+ok "Product '$PRODUCT' not found in ports.json — proceeding"
 
 echo ""
 
@@ -280,10 +283,7 @@ else
     if [[ "$LINKED_TEAM_COUNT" -gt 0 ]]; then
       ok "Team '$TEAM_KEY' already linked to project — skipping"
     else
-      # Link team to existing project
-      LINK_QUERY='mutation { projectCreate(input: { name: "'"$PRODUCT"'", teamIds: ["'"$TEAM_ID"'"] }) { success } }'
-      warn "Team '$TEAM_KEY' not linked to project '$PRODUCT'. Manual linking may be needed."
-      # TODO: Linear API may not have a direct projectTeamCreate mutation; manual linking via UI may be required
+      warn "Team '$TEAM_KEY' not linked to project '$PRODUCT'. Link it manually via the Linear UI."
     fi
   else
     # Create project with team link
