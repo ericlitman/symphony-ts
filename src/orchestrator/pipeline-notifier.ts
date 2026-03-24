@@ -237,13 +237,17 @@ export function createSlackPoster(input: {
 // PipelineNotifier — best-effort delivery
 // ---------------------------------------------------------------------------
 
+export interface PipelineNotificationSink {
+  notify(event: PipelineNotificationEvent): void;
+}
+
 export interface PipelineNotifierOptions {
   channel: string;
   poster: NotificationPoster;
   onError?: (error: unknown) => void;
 }
 
-export class PipelineNotifier {
+export class PipelineNotifier implements PipelineNotificationSink {
   private readonly channel: string;
   private readonly poster: NotificationPoster;
   private readonly onError: (error: unknown) => void;

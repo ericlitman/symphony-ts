@@ -52,7 +52,7 @@ import type {
 } from "./core.js";
 import { OrchestratorCore } from "./core.js";
 import { runEnsembleGate } from "./gate-handler.js";
-import type { PipelineNotifier } from "./pipeline-notifier.js";
+import type { PipelineNotificationSink } from "./pipeline-notifier.js";
 
 export interface AgentRunnerLike {
   run(input: AgentRunInput): Promise<AgentRunResult>;
@@ -67,7 +67,7 @@ export interface RuntimeHostOptions {
   }) => AgentRunnerLike;
   logger?: StructuredLogger;
   workspaceManager?: WorkspaceManager;
-  notifier?: PipelineNotifier | null;
+  notifier?: PipelineNotificationSink | null;
   now?: () => Date;
 }
 
@@ -78,7 +78,7 @@ export interface RuntimeServiceOptions {
   runtimeHost?: OrchestratorRuntimeHost;
   workspaceManager?: WorkspaceManager;
   workflowWatcher?: WorkflowWatcher | null;
-  notifier?: PipelineNotifier | null;
+  notifier?: PipelineNotificationSink | null;
   now?: () => Date;
   logger?: StructuredLogger;
   stdout?: Writable;
@@ -143,7 +143,7 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
 
   private readonly snapshotListeners = new Set<() => void>();
 
-  readonly notifier: PipelineNotifier | null;
+  readonly notifier: PipelineNotificationSink | null;
 
   constructor(options: RuntimeHostOptions) {
     this.config = options.config;
@@ -605,7 +605,6 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
     const capturedTitle = runningEntry?.issue.title ?? execution.issueIdentifier;
     const capturedUrl = runningEntry?.issue.url ?? null;
     const capturedRetryAttempt = runningEntry?.retryAttempt ?? null;
-    const preCompletedHas = state.completed.has(execution.issueId);
     const preFailedHas = state.failed.has(execution.issueId);
     const capturedFirstDispatchedAt =
       state.issueFirstDispatchedAt[execution.issueId] ?? null;
@@ -637,7 +636,6 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
         capturedUrl,
         capturedRetryAttempt,
         capturedTurnCount: runningEntry?.turnCount ?? 0,
-        preCompletedHas,
         preFailedHas,
         capturedFirstDispatchedAt,
         durationMs,
@@ -658,7 +656,6 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
       capturedUrl: string | null;
       capturedRetryAttempt: number | null;
       capturedTurnCount: number;
-      preCompletedHas: boolean;
       preFailedHas: boolean;
       capturedFirstDispatchedAt: string | null;
       durationMs: number;
@@ -713,12 +710,14 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
       return;
     }
 
-    // Terminal completion — completed.has() is new AND no continuation retry scheduled
-    const nowCompleted =
-      state.completed.has(execution.issueId) && !captured.preCompletedHas;
+    // Terminal completion: issue is in completed set AND no continuation retry was scheduled
+    // (completed is added for both terminal and continuation, but only continuations schedule a retry)
+    const isInCompleted = state.completed.has(execution.issueId);
     const hasContinuationRetry =
       state.retryAttempts[execution.issueId] !== undefined;
-    if (nowCompleted && !hasContinuationRetry) {
+    const isNewlyFailed = state.failed.has(execution.issueId) && !captured.preFailedHas;
+
+    if (isInCompleted && !hasContinuationRetry && !isNewlyFailed) {
       const totalTokens = captured.preHistory.reduce(
         (sum, r) => sum + r.totalTokens,
         0,
