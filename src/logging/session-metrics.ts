@@ -378,8 +378,13 @@ function buildRecentActivityEntry(
     return null;
   }
 
-  // Turn outcome events: show turn result with optional token count
-  if (event.event === "turn_completed" || event.event === "turn_failed") {
+  // Turn outcome events: show turn result with optional token count.
+  // Skip streaming duplicates (which carry `raw`) — prefer the synthetic
+  // post-await event from AgentRunner which has authoritative usage data.
+  if (
+    (event.event === "turn_completed" || event.event === "turn_failed") &&
+    event.raw === undefined
+  ) {
     const label =
       event.event === "turn_completed" ? "Turn completed" : "Turn failed";
     const entry: RecentActivityEntry = {

@@ -106,6 +106,7 @@ export function buildRuntimeSnapshot(
         tokensPerTurn,
         now,
         pipelineStage,
+        entry.startedAt,
       );
       const row: RuntimeSnapshotRunningRow = {
         issue_id: entry.issue.id,
@@ -212,24 +213,29 @@ function classifyHealth(
   tokensPerTurn: number,
   now: Date,
   stageName: string | null,
+  startedAt?: string,
 ): { health: HealthStatus; health_reason: string | null } {
-  if (lastEventAt !== null) {
-    const lastEventMs = Date.parse(lastEventAt);
-    if (Number.isFinite(lastEventMs)) {
-      const secondsSinceEvent = (now.getTime() - lastEventMs) / 1000;
+  // Use lastEventAt if available, otherwise fall back to startedAt
+  // to detect sessions that launched but never emitted any events.
+  const referenceTime = lastEventAt ?? startedAt ?? null;
+  if (referenceTime !== null) {
+    const refMs = Date.parse(referenceTime);
+    if (Number.isFinite(refMs)) {
+      const secondsSinceRef = (now.getTime() - refMs) / 1000;
       const threshold = getStallThreshold(stageName);
       const stageLabel = stageName ?? "unknown";
+      const label = lastEventAt !== null ? "no activity" : "no events since start";
 
-      if (secondsSinceEvent > threshold * 0.8) {
+      if (secondsSinceRef > threshold * 0.8) {
         return {
           health: "red",
-          health_reason: `stalled: no activity for ${Math.floor(secondsSinceEvent)}s (${stageLabel} stage, threshold ${threshold}s)`,
+          health_reason: `stalled: ${label} for ${Math.floor(secondsSinceRef)}s (${stageLabel} stage, threshold ${threshold}s)`,
         };
       }
-      if (secondsSinceEvent > threshold * 0.5) {
+      if (secondsSinceRef > threshold * 0.5) {
         return {
           health: "yellow",
-          health_reason: `slow: no activity for ${Math.floor(secondsSinceEvent)}s (${stageLabel} stage, threshold ${threshold}s)`,
+          health_reason: `slow: ${label} for ${Math.floor(secondsSinceRef)}s (${stageLabel} stage, threshold ${threshold}s)`,
         };
       }
     }
