@@ -7,20 +7,20 @@
  */
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import coldStartData from "./data/cold-start-analysis.json";
 import {
   ColdStartBanner,
   ColdStartPlaceholder,
   EfficiencyScorecard,
+  ExecutiveSummary,
   OutlierAnalysis,
+  PerProductBreakdown,
   PerStageTrend,
   PerTicketCostTrend,
-  ReportHeader,
-  ExecutiveSummary,
-  StageEfficiency,
-  PerProductBreakdown,
   ReportFooter,
+  ReportHeader,
+  StageEfficiency,
 } from "./components/index.ts";
+import coldStartData from "./data/cold-start-analysis.json";
 import type { AnalysisData } from "./types.ts";
 
 const data = coldStartData as AnalysisData;
@@ -44,7 +44,10 @@ describe("cold start: ColdStartBanner", () => {
   it("renders banner with custom message", () => {
     const html = stripComments(
       renderToString(
-        <ColdStartBanner dataSpanDays={2} message="Custom cold-start message" />,
+        <ColdStartBanner
+          dataSpanDays={2}
+          message="Custom cold-start message"
+        />,
       ),
     );
     expect(html).toContain("Custom cold-start message");
@@ -62,9 +65,7 @@ describe("cold start: ColdStartBanner", () => {
 describe("cold start: ColdStartPlaceholder", () => {
   it("shows remaining days needed", () => {
     const html = stripComments(
-      renderToString(
-        <ColdStartPlaceholder requiredDays={7} currentDays={3} />,
-      ),
+      renderToString(<ColdStartPlaceholder requiredDays={7} currentDays={3} />),
     );
     expect(html).toContain("cold-start-placeholder");
     expect(html).toContain("Collecting data");
@@ -74,9 +75,7 @@ describe("cold start: ColdStartPlaceholder", () => {
 
   it("shows singular day when 1 more needed", () => {
     const html = stripComments(
-      renderToString(
-        <ColdStartPlaceholder requiredDays={7} currentDays={6} />,
-      ),
+      renderToString(<ColdStartPlaceholder requiredDays={7} currentDays={6} />),
     );
     expect(html).toContain("1 more day needed");
   });
@@ -150,7 +149,10 @@ describe("cold start: PerTicketCostTrend shows placeholder", () => {
 describe("cold start: EfficiencyScorecard shows trend note", () => {
   it("renders trend unavailable note when coldStart=true", () => {
     const html = renderToString(
-      <EfficiencyScorecard scorecard={data.efficiency_scorecard} coldStart={true} />,
+      <EfficiencyScorecard
+        scorecard={data.efficiency_scorecard}
+        coldStart={true}
+      />,
     );
     expect(html).toContain("Efficiency Scorecard");
     expect(html).toContain("Trend data unavailable");
@@ -162,7 +164,10 @@ describe("cold start: EfficiencyScorecard shows trend note", () => {
 
   it("does not show trend note when coldStart is false", () => {
     const html = renderToString(
-      <EfficiencyScorecard scorecard={data.efficiency_scorecard} coldStart={false} />,
+      <EfficiencyScorecard
+        scorecard={data.efficiency_scorecard}
+        coldStart={false}
+      />,
     );
     expect(html).not.toContain("Trend data unavailable");
   });
