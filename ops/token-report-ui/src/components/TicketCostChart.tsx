@@ -4,7 +4,6 @@
  * for median and mean values.
  * Converted from Paper design reference; pure SVG, no external charting libs.
  */
-import type { PerTicketTrend } from "../types.ts";
 import {
   CHART_TOKENS,
   DEFAULT_PADDING,
@@ -15,6 +14,7 @@ import {
   pickTickIndices,
   round,
 } from "../lib/chart-utils.ts";
+import type { PerTicketTrend } from "../types.ts";
 
 export interface TicketCostChartProps {
   perTicket: PerTicketTrend;
@@ -80,15 +80,14 @@ export default function TicketCostChart({
   const valToY = (v: number) =>
     linearScale(v, minY, maxY, pad.top + chartH, pad.top);
 
-  const idxToX = (i: number) =>
-    pad.left + (i / (series.length - 1)) * chartW;
+  const idxToX = (i: number) => pad.left + (i / (series.length - 1)) * chartW;
 
   // --- Y-axis grid ---
   const yGridValues = computeYGrid(minY, maxY, 4);
-  const gridElements = yGridValues.map((val, i) => {
+  const gridElements = yGridValues.map((val) => {
     const y = valToY(val);
     return (
-      <g key={`ygrid-${i}`}>
+      <g key={`ygrid-${val}`}>
         <line
           x1={pad.left}
           y1={y}
@@ -145,53 +144,55 @@ export default function TicketCostChart({
 
   // --- Median reference line ---
   const medianY = valToY(median);
-  const medianLine = median > 0 ? (
-    <g key="ref-median">
-      <line
-        x1={pad.left}
-        y1={medianY}
-        x2={width - pad.right}
-        y2={medianY}
-        stroke={CHART_TOKENS.medianStroke}
-        strokeWidth="1"
-        strokeDasharray="6,3"
-      />
-      <text
-        x={width - pad.right + 4}
-        y={medianY + 4}
-        fill={CHART_TOKENS.medianStroke}
-        fontSize="9"
-        textAnchor="start"
-      >
-        med {formatAxisValue(median)}
-      </text>
-    </g>
-  ) : null;
+  const medianLine =
+    median > 0 ? (
+      <g key="ref-median">
+        <line
+          x1={pad.left}
+          y1={medianY}
+          x2={width - pad.right}
+          y2={medianY}
+          stroke={CHART_TOKENS.medianStroke}
+          strokeWidth="1"
+          strokeDasharray="6,3"
+        />
+        <text
+          x={width - pad.right + 4}
+          y={medianY + 4}
+          fill={CHART_TOKENS.medianStroke}
+          fontSize="9"
+          textAnchor="start"
+        >
+          med {formatAxisValue(median)}
+        </text>
+      </g>
+    ) : null;
 
   // --- Mean reference line ---
   const meanY = valToY(mean);
-  const meanLine = mean > 0 ? (
-    <g key="ref-mean">
-      <line
-        x1={pad.left}
-        y1={meanY}
-        x2={width - pad.right}
-        y2={meanY}
-        stroke={CHART_TOKENS.meanStroke}
-        strokeWidth="1"
-        strokeDasharray="3,3"
-      />
-      <text
-        x={width - pad.right + 4}
-        y={meanY + 4}
-        fill={CHART_TOKENS.meanStroke}
-        fontSize="9"
-        textAnchor="start"
-      >
-        avg {formatAxisValue(mean)}
-      </text>
-    </g>
-  ) : null;
+  const meanLine =
+    mean > 0 ? (
+      <g key="ref-mean">
+        <line
+          x1={pad.left}
+          y1={meanY}
+          x2={width - pad.right}
+          y2={meanY}
+          stroke={CHART_TOKENS.meanStroke}
+          strokeWidth="1"
+          strokeDasharray="3,3"
+        />
+        <text
+          x={width - pad.right + 4}
+          y={meanY + 4}
+          fill={CHART_TOKENS.meanStroke}
+          fontSize="9"
+          textAnchor="start"
+        >
+          avg {formatAxisValue(mean)}
+        </text>
+      </g>
+    ) : null;
 
   // --- Legend ---
   const legendY = height - 8;
@@ -213,7 +214,12 @@ export default function TicketCostChart({
           strokeWidth="1.5"
           strokeDasharray={item.dash ? "4,2" : "none"}
         />
-        <text x={x + 20} y={legendY} fill={CHART_TOKENS.legendText} fontSize="10">
+        <text
+          x={x + 20}
+          y={legendY}
+          fill={CHART_TOKENS.legendText}
+          fontSize="10"
+        >
           {item.label}
         </text>
       </g>

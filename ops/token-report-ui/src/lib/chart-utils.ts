@@ -61,7 +61,10 @@ export function linearScale(
   const domainSpan = domainMax - domainMin || 1;
   const rangeSpan = rangeMax - rangeMin;
   const scaled = rangeMin + ((value - domainMin) / domainSpan) * rangeSpan;
-  return Math.max(Math.min(scaled, Math.max(rangeMin, rangeMax)), Math.min(rangeMin, rangeMax));
+  return Math.max(
+    Math.min(scaled, Math.max(rangeMin, rangeMax)),
+    Math.min(rangeMin, rangeMax),
+  );
 }
 
 /**
@@ -70,8 +73,18 @@ export function linearScale(
  */
 export function formatDateLabel(dateStr: string): string {
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
   ];
   const parts = dateStr.split("-");
   if (parts.length < 3) return dateStr;

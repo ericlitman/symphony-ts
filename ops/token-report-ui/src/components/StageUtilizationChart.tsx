@@ -3,8 +3,6 @@
  * Shows per-stage token utilization trend over time.
  * Converted from Paper design reference; pure SVG, no external charting libs.
  */
-import type { StageTrend } from "../types.ts";
-import type { ConfigChange } from "./chartUtils.tsx";
 import {
   CHART_TOKENS,
   DEFAULT_PADDING,
@@ -18,6 +16,8 @@ import {
   pickTickIndices,
   round,
 } from "../lib/chart-utils.ts";
+import type { StageTrend } from "../types.ts";
+import type { ConfigChange } from "./chartUtils.tsx";
 
 export interface StageUtilizationChartProps {
   stageData: Record<string, StageTrend>;
@@ -66,7 +66,9 @@ export default function StageUtilizationChart({
   for (const stage of stages) {
     const avg = stageData[stage].daily_avg;
     if (typeof avg === "object" && avg !== null && !Array.isArray(avg)) {
-      stageValues[stage] = sortedDates.map((d) => (avg as Record<string, number>)[d] ?? 0);
+      stageValues[stage] = sortedDates.map(
+        (d) => (avg as Record<string, number>)[d] ?? 0,
+      );
     } else {
       // Scalar daily_avg — fill with constant value
       const val = typeof avg === "number" ? avg : 0;
@@ -102,10 +104,10 @@ export default function StageUtilizationChart({
 
   // --- Y-axis grid ---
   const yGridValues = computeYGrid(minY, maxStackedY, 4);
-  const gridElements = yGridValues.map((val, i) => {
+  const gridElements = yGridValues.map((val) => {
     const y = valToY(val);
     return (
-      <g key={`ygrid-${i}`}>
+      <g key={`ygrid-${val}`}>
         <line
           x1={pad.left}
           y1={y}
@@ -162,7 +164,13 @@ export default function StageUtilizationChart({
           strokeWidth="1"
           strokeDasharray="4,4"
         />
-        <text x={x} y={pad.top - 3} fill="#d29922" fontSize="9" textAnchor="middle">
+        <text
+          x={x}
+          y={pad.top - 3}
+          fill="#d29922"
+          fontSize="9"
+          textAnchor="middle"
+        >
           {"\u2699"}
         </text>
       </g>
@@ -174,7 +182,10 @@ export default function StageUtilizationChart({
   const lineElements: React.JSX.Element[] = [];
 
   // We need the previous stage's top as the current stage's bottom
-  let prevCoords: Array<[number, number]> = sortedDates.map((_, i) => [dateToX(i), baselineY]);
+  let prevCoords: Array<[number, number]> = sortedDates.map((_, i) => [
+    dateToX(i),
+    baselineY,
+  ]);
 
   for (let si = 0; si < stages.length; si++) {
     const stage = stages[si];
@@ -224,8 +235,20 @@ export default function StageUtilizationChart({
     const color = STAGE_COLORS[si % STAGE_COLORS.length];
     return (
       <g key={`legend-${stage}`}>
-        <rect x={x} y={legendY - 8} width="10" height="10" fill={color} rx="2" />
-        <text x={x + 14} y={legendY + 1} fill={CHART_TOKENS.legendText} fontSize="10">
+        <rect
+          x={x}
+          y={legendY - 8}
+          width="10"
+          height="10"
+          fill={color}
+          rx="2"
+        />
+        <text
+          x={x + 14}
+          y={legendY + 1}
+          fill={CHART_TOKENS.legendText}
+          fontSize="10"
+        >
           {stage}
         </text>
       </g>

@@ -241,8 +241,8 @@ describe("ReportFooter", () => {
 
 describe("chart-utils", () => {
   it("round() rounds to specified decimals", () => {
-    expect(round(3.14159, 2)).toBe(3.14);
-    expect(round(3.14159, 0)).toBe(3);
+    expect(round(Math.PI, 2)).toBe(3.14);
+    expect(round(Math.PI, 0)).toBe(3);
     expect(round(1000.5)).toBe(1001);
   });
 
@@ -281,12 +281,21 @@ describe("chart-utils", () => {
   });
 
   it("buildPointsString joins coordinates", () => {
-    const result = buildPointsString([[10, 20], [30, 40]]);
+    const result = buildPointsString([
+      [10, 20],
+      [30, 40],
+    ]);
     expect(result).toBe("10,20 30,40");
   });
 
   it("buildAreaString creates closed polygon", () => {
-    const result = buildAreaString([[10, 20], [30, 40]], 100);
+    const result = buildAreaString(
+      [
+        [10, 20],
+        [30, 40],
+      ],
+      100,
+    );
     expect(result).toContain("10,20");
     expect(result).toContain("30,40");
     expect(result).toContain("30,100");
@@ -318,7 +327,10 @@ describe("chart-utils", () => {
 // ─── StageUtilizationChart tests ───
 
 describe("StageUtilizationChart", () => {
-  const dateKeyedTrend: Record<string, { daily_avg: Record<string, number>; wow_delta: number }> = {
+  const dateKeyedTrend: Record<
+    string,
+    { daily_avg: Record<string, number>; wow_delta: number }
+  > = {
     investigate: {
       daily_avg: {
         "2026-03-01": 50000,
