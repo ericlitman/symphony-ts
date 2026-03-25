@@ -1861,7 +1861,9 @@ function buildConcerns(scorecard) {
   if (failureRates && typeof failureRates === "object") {
     for (const [stage, rate] of Object.entries(failureRates)) {
       if (rate > 20) {
-        concerns.push(`⚠️ Stage *${stage}* failure rate is ${round(rate, 1)}% (threshold: 20%)`);
+        concerns.push(
+          `⚠️ Stage *${stage}* failure rate is ${round(rate, 1)}% (threshold: 20%)`,
+        );
       }
     }
   }
@@ -1881,7 +1883,9 @@ function buildConcerns(scorecard) {
   // First-pass success rate
   const fp = scorecard?.first_pass_rate?.current ?? 100;
   if (fp < 70) {
-    concerns.push(`⚠️ First-pass success is *${round(fp, 1)}%* (threshold: 70%)`);
+    concerns.push(
+      `⚠️ First-pass success is *${round(fp, 1)}%* (threshold: 70%)`,
+    );
   }
 
   // Wasted context
@@ -1961,7 +1965,8 @@ function runSlack() {
   const coldStart = spanDays < 7;
   let execSummary = `*Executive Summary*\n> *${fmtNum(es.total_tokens?.value)}* tokens across *${fmtNum(es.unique_issues?.value)}* issues over *${spanDays}d* (tier: ${tier})\n> ${fmtNum(es.total_stages?.value ?? 0)} total stages completed`;
   if (coldStart) {
-    execSummary += `\n> _⚠️ Cold start — less than 7d of data; WoW deltas not available_`;
+    execSummary +=
+      "\n> _⚠️ Cold start — less than 7d of data; WoW deltas not available_";
   }
   sections.push(execSummary);
 

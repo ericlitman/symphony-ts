@@ -1102,7 +1102,7 @@ describe("token-report.mjs slack", () => {
 
     const env: Record<string, string> = {};
     // Explicitly unset SLACK_BOT_TOKEN
-    delete process.env.SLACK_BOT_TOKEN;
+    process.env.SLACK_BOT_TOKEN = undefined;
     const { exitCode, stderr } = runSlack(symphonyHome, env);
 
     expect(exitCode).toBe(0);
