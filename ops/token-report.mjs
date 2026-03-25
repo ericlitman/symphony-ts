@@ -1902,19 +1902,16 @@ function runSlack() {
   const spanDays = analysis.data_span_days ?? 0;
   const tier = analysis.cold_start_tier ?? "unknown";
   sections.push(
-    `*Executive Summary*\n` +
-      `> *${fmtNum(es.total_tokens?.value)}* tokens across *${fmtNum(es.unique_issues?.value)}* issues over *${spanDays}d* (tier: ${tier})\n` +
-      `> ${fmtNum(es.total_stages?.value ?? 0)} total stages completed`,
+    `*Executive Summary*\n> *${fmtNum(es.total_tokens?.value)}* tokens across *${fmtNum(es.unique_issues?.value)}* issues over *${spanDays}d* (tier: ${tier})\n> ${fmtNum(es.total_stages?.value ?? 0)} total stages completed`,
   );
 
   // --- Section 3: Tokens per Issue ---
   sections.push(
-    `*Tokens per Issue*\n` +
-      `> Median: *${medianTPI}* · Mean: *${meanTPI}* · Issues tracked: *${issueValues.length}*\n` +
-      `> Top consumer: *${topConsumer}*\n` +
-      (perTicket.ticket_count > 0
+    `*Tokens per Issue*\n> Median: *${medianTPI}* · Mean: *${meanTPI}* · Issues tracked: *${issueValues.length}*\n> Top consumer: *${topConsumer}*\n${
+      perTicket.ticket_count > 0
         ? `> Rolling trend — median: ${fmtNum(perTicket.median)}, mean: ${fmtNum(perTicket.mean)}`
-        : `> _No rolling trend data yet_`),
+        : "> _No rolling trend data yet_"
+    }`,
   );
 
   // --- Section 4: Efficiency Scorecard ---
@@ -1925,10 +1922,7 @@ function runSlack() {
   const tokPerTurn = fmtNum(sc.tokens_per_turn?.current ?? 0);
   const wastedCtx = round(sc.wasted_context?.current ?? 0, 1);
   sections.push(
-    `*Efficiency Scorecard*\n` +
-      `> Cache hit rate: *${cacheEff}%* (7d trend: ${cacheTrend7d >= 0 ? "+" : ""}${cacheTrend7d}%)\n` +
-      `> Output ratio: *${outputRatio}%* · First-pass success: *${firstPass}%*\n` +
-      `> Tokens/turn: *${tokPerTurn}* · Wasted context: *${wastedCtx}%*`,
+    `*Efficiency Scorecard*\n> Cache hit rate: *${cacheEff}%* (7d trend: ${cacheTrend7d >= 0 ? "+" : ""}${cacheTrend7d}%)\n> Output ratio: *${outputRatio}%* · First-pass success: *${firstPass}%*\n> Tokens/turn: *${tokPerTurn}* · Wasted context: *${wastedCtx}%*`,
   );
 
   // --- Section 5: Per-Stage Spend ---
@@ -1943,7 +1937,7 @@ function runSlack() {
       );
     sections.push(`*Per-Stage Spend (top 5)*\n${stageLines.join("\n")}`);
   } else {
-    sections.push(`*Per-Stage Spend*\n> _No stage data available_`);
+    sections.push("*Per-Stage Spend*\n> _No stage data available_");
   }
 
   // --- Section 6: Per-Product Breakdown ---
@@ -1960,30 +1954,34 @@ function runSlack() {
       `*Per-Product Breakdown (top 5)*\n${productLines.join("\n")}`,
     );
   } else {
-    sections.push(`*Per-Product Breakdown*\n> _No product data available_`);
+    sections.push("*Per-Product Breakdown*\n> _No product data available_");
   }
 
   // --- Section 7: Outliers ---
   if (outliers.length > 0) {
-    const outlierLines = outliers.slice(0, 5).map(
-      (o) =>
-        `>  • ⚠️ ${o.issue_identifier}: *${fmtNum(o.total_tokens)}* tokens (z=${round(o.z_score, 2)})${o.hypothesis ? ` — ${o.hypothesis}` : ""}`,
-    );
+    const outlierLines = outliers
+      .slice(0, 5)
+      .map(
+        (o) =>
+          `>  • ⚠️ ${o.issue_identifier}: *${fmtNum(o.total_tokens)}* tokens (z=${round(o.z_score, 2)})${o.hypothesis ? ` — ${o.hypothesis}` : ""}`,
+      );
     sections.push(
       `*Outliers* (>${"2σ"} from mean)\n${outlierLines.join("\n")}`,
     );
   } else {
     sections.push(
-      `*Outliers*\n> ✅ No outliers detected — all issues within 2σ of mean`,
+      "*Outliers*\n> ✅ No outliers detected — all issues within 2σ of mean",
     );
   }
 
   // --- Section 8: Inflections ---
   if (inflections.length > 0) {
-    const inflectionLines = inflections.slice(0, 5).map(
-      (inf) =>
-        `>  • ⚡ ${inf.stage}: ${inf.direction} *${round(inf.pct_change, 1)}%* (7d avg crossed 30d avg)`,
-    );
+    const inflectionLines = inflections
+      .slice(0, 5)
+      .map(
+        (inf) =>
+          `>  • ⚡ ${inf.stage}: ${inf.direction} *${round(inf.pct_change, 1)}%* (7d avg crossed 30d avg)`,
+      );
     sections.push(`*Trend Inflections*\n${inflectionLines.join("\n")}`);
   } else {
     sections.push(
