@@ -1253,5 +1253,6 @@ function createRunningEntry(input: {
     startedAt: input.startedAt,
     workerHandle: null,
     monitorHandle: null,
+    failureReason: null,
   };
 }
