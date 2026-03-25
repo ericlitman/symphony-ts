@@ -6,7 +6,7 @@
  * synthetic symphony.jsonl events, then invoking the extract subcommand.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -1063,21 +1063,16 @@ function runSlack(symphonyHome: string, extraEnv: Record<string, string> = {}) {
     LINEAR_API_KEY: "",
     ...extraEnv,
   };
-  try {
-    const stdout = execFileSync(NODE_BIN, [SCRIPT_PATH, "slack"], {
-      env,
-      encoding: "utf-8",
-      timeout: 15000,
-    });
-    return { stdout, stderr: "", exitCode: 0 };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; status?: number };
-    return {
-      stdout: e.stdout || "",
-      stderr: e.stderr || "",
-      exitCode: e.status ?? 1,
-    };
-  }
+  const result = spawnSync(NODE_BIN, [SCRIPT_PATH, "slack"], {
+    env,
+    encoding: "utf-8",
+    timeout: 15000,
+  });
+  return {
+    stdout: result.stdout || "",
+    stderr: result.stderr || "",
+    exitCode: result.status ?? 1,
+  };
 }
 
 describe("token-report.mjs slack", () => {
@@ -1112,6 +1107,94 @@ describe("token-report.mjs slack", () => {
 
     const { exitCode } = runSlack(symphonyHome, { SLACK_WEBHOOK_URL: "" });
     expect(exitCode).toBe(0);
+  });
+
+  it("skips posting when cooldown has not expired", () => {
+    const records = generateDaysOfRecords(5, 2);
+    writeTokenHistory(symphonyHome, records);
+    writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
+
+    // Write a recent timestamp to the cooldown file
+    const dataDir = join(symphonyHome, "data");
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, ".last-slack-ts"), String(Date.now()), "utf-8");
+
+    const { exitCode, stderr } = runSlack(symphonyHome, {
+      SLACK_BOT_TOKEN: "xoxb-fake-token",
+    });
+
+    expect(exitCode).toBe(0);
+    // Should contain the cooldown skip message, not a post attempt
+    expect(stderr).toContain("skipping");
+  });
+
+  it("proceeds when cooldown file is older than 24 hours", () => {
+    const records = generateDaysOfRecords(5, 2);
+    writeTokenHistory(symphonyHome, records);
+    writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
+
+    // Write a timestamp from 25 hours ago
+    const dataDir = join(symphonyHome, "data");
+    mkdirSync(dataDir, { recursive: true });
+    const expiredTs = Date.now() - 25 * 60 * 60 * 1000;
+    writeFileSync(join(dataDir, ".last-slack-ts"), String(expiredTs), "utf-8");
+
+    // Will fail at the curl step (fake token), but it should get past the cooldown
+    const { stderr } = runSlack(symphonyHome, {
+      SLACK_BOT_TOKEN: "xoxb-fake-token",
+    });
+
+    // Should NOT contain cooldown skip message — it tried to post
+    expect(stderr).not.toContain("skipping");
+  });
+
+  it("bypasses cooldown when SLACK_FORCE=1", () => {
+    const records = generateDaysOfRecords(5, 2);
+    writeTokenHistory(symphonyHome, records);
+    writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
+
+    // Write a recent timestamp
+    const dataDir = join(symphonyHome, "data");
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, ".last-slack-ts"), String(Date.now()), "utf-8");
+
+    // Should bypass cooldown and attempt to post
+    const { stderr } = runSlack(symphonyHome, {
+      SLACK_BOT_TOKEN: "xoxb-fake-token",
+      SLACK_FORCE: "1",
+    });
+
+    expect(stderr).not.toContain("skipping");
+  });
+
+  it("proceeds when cooldown file does not exist", () => {
+    const records = generateDaysOfRecords(5, 2);
+    writeTokenHistory(symphonyHome, records);
+    writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
+
+    // No cooldown file — should attempt to post
+    const { stderr } = runSlack(symphonyHome, {
+      SLACK_BOT_TOKEN: "xoxb-fake-token",
+    });
+
+    expect(stderr).not.toContain("skipping");
+  });
+
+  it("proceeds when cooldown file is corrupted", () => {
+    const records = generateDaysOfRecords(5, 2);
+    writeTokenHistory(symphonyHome, records);
+    writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
+
+    // Write garbage to the cooldown file
+    const dataDir = join(symphonyHome, "data");
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(dataDir, ".last-slack-ts"), "not-a-number", "utf-8");
+
+    const { stderr } = runSlack(symphonyHome, {
+      SLACK_BOT_TOKEN: "xoxb-fake-token",
+    });
+
+    expect(stderr).not.toContain("skipping");
   });
 });
 

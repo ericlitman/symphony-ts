@@ -15,6 +15,7 @@
  *   SYMPHONY_LOG_DIR   (default $HOME/Library/Logs/symphony)
  *   LINEAR_API_KEY     — used by `linear` CLI; graceful degradation without it
  *   SLACK_WEBHOOK_URL  — Slack incoming webhook; graceful degradation without it
+ *   SLACK_FORCE        — Set to 1 to bypass 24-hour Slack cooldown
  *   BASE_URL           — hostname:port for report links (never hardcode localhost)
  *   TOKEN_REPORT_PORT  — port for report server (default 8090)
  *
@@ -1842,11 +1843,18 @@ function runRender() {
 // Slack subcommand — SYMPH-131
 // ---------------------------------------------------------------------------
 
+/** Path to the cooldown timestamp file for Slack digest posting. */
+const SLACK_COOLDOWN_PATH = join(DATA_DIR, ".last-slack-ts");
+
+/** Default cooldown period: 24 hours in milliseconds. */
+const SLACK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Post narrative Slack digest via Bot Token API (SYMPH-139).
  *
  * 9-section markdown digest with interpretive commentary.
  * Set DRY_RUN=1 to log to stderr instead of posting.
+ * Set SLACK_FORCE=1 to bypass the 24-hour cooldown.
  */
 function runSlack() {
   const botToken = process.env.SLACK_BOT_TOKEN;
@@ -1854,6 +1862,23 @@ function runSlack() {
     warn("SLACK_BOT_TOKEN not set — skipping Slack digest");
     return;
   }
+
+  // 24-hour cooldown guard — prevent duplicate posts from agents, retries, etc.
+  if (!process.env.SLACK_FORCE) {
+    try {
+      if (existsSync(SLACK_COOLDOWN_PATH)) {
+        const lastTs = parseInt(readFileSync(SLACK_COOLDOWN_PATH, "utf-8").trim(), 10);
+        if (!isNaN(lastTs) && Date.now() - lastTs < SLACK_COOLDOWN_MS) {
+          const hoursAgo = ((Date.now() - lastTs) / (60 * 60 * 1000)).toFixed(1);
+          info(`Slack digest sent ${hoursAgo}h ago — skipping (set SLACK_FORCE=1 to override)`);
+          return;
+        }
+      }
+    } catch {
+      // Corrupted or unreadable file — proceed with post
+    }
+  }
+
   const channelId = process.env.SLACK_CHANNEL_ID || "C0ANRJRBYGL";
 
   const analysis = computeAnalysis();
@@ -2033,6 +2058,12 @@ function runSlack() {
     }
     if (parsed.ok) {
       info("Slack digest posted");
+      // Record successful post timestamp for cooldown
+      try {
+        writeFileSync(SLACK_COOLDOWN_PATH, String(Date.now()), "utf-8");
+      } catch {
+        // Best-effort — failure to write cooldown file should not affect the post
+      }
     } else {
       warn(`Slack API error: ${parsed.error ?? "unknown"}`);
     }
