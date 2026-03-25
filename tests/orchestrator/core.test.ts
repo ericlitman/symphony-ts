@@ -3624,8 +3624,7 @@ describe("dispatch failure diagnostics", () => {
 
       const dispatchWarning = warnings.find(
         (args) =>
-          typeof args[0] === "string" &&
-          args[0].includes("Dispatch failure"),
+          typeof args[0] === "string" && args[0].includes("Dispatch failure"),
       );
       expect(dispatchWarning).toBeDefined();
       // Error message includes the issue identifier for correlation
