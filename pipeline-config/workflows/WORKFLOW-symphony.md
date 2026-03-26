@@ -71,6 +71,9 @@ hooks:
     # --- Clean up stale branch from previous failed attempt (idempotency) ---
     if git -C "$BARE_CLONE" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
       echo "Cleaning up stale branch $BRANCH_NAME from previous attempt..."
+      # Remove workspace contents so the worktree entry becomes stale
+      find "$WORKSPACE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+      # Prune now-stale worktree entry, then delete the orphaned branch
       git -C "$BARE_CLONE" worktree prune 2>/dev/null || true
       git -C "$BARE_CLONE" branch -D "$BRANCH_NAME" 2>/dev/null || true
     fi
