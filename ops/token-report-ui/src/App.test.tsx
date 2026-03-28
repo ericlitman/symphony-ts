@@ -191,9 +191,9 @@ describe("SYMPH-190 formula verification", () => {
   it("per_ticket_series exists on fixture for chart rendering", () => {
     expect(analysisData).toHaveProperty("per_ticket_series");
     expect(Array.isArray(analysisData.per_ticket_series)).toBe(true);
-    expect(
-      (analysisData.per_ticket_series as number[]).length,
-    ).toBeGreaterThan(0);
+    expect((analysisData.per_ticket_series as number[]).length).toBeGreaterThan(
+      0,
+    );
   });
 });
 
