@@ -199,9 +199,7 @@ describe("SYMPH-189: formula fixes and pipeline wiring", () => {
   });
 
   it("analysis.json has wow_delta_pct on total_tokens", () => {
-    expect(data.executive_summary.total_tokens).toHaveProperty(
-      "wow_delta_pct",
-    );
+    expect(data.executive_summary.total_tokens).toHaveProperty("wow_delta_pct");
   });
 
   it("analysis.json has wow_delta_pct on per_ticket_trend", () => {
