@@ -28,10 +28,10 @@ export interface WowBadgeProps {
 
 export function WowBadge({ delta }: WowBadgeProps) {
   if (delta == null) {
-    return <span style={{ color: "#8b949e" }}>{"\u2014"}</span>;
+    return <span style={{ color: "var(--text-muted)" }}>{"\u2014"}</span>;
   }
   const sign = delta > 0 ? "+" : "";
-  const color = delta > 0 ? "#f85149" : delta < 0 ? "#3fb950" : "#8b949e";
+  const color = delta > 0 ? "var(--red)" : delta < 0 ? "var(--green)" : "var(--text-muted)";
   return (
     <span style={{ color, fontSize: "0.85em" }}>
       {sign}
@@ -57,7 +57,7 @@ export function Sparkline({
   values,
   width = 120,
   height = 30,
-  stroke = "#58a6ff",
+  stroke = "var(--accent)",
   strokeWidth = 1.5,
   fill = false,
 }: SparklineProps) {
@@ -144,14 +144,14 @@ export function MultiLineChart({
   height = 200,
 }: MultiLineChartProps) {
   const colors = [
-    "#58a6ff",
-    "#3fb950",
-    "#d29922",
-    "#f85149",
-    "#bc8cff",
-    "#79c0ff",
-    "#56d364",
-    "#e3b341",
+    "var(--accent)",
+    "var(--green)",
+    "var(--yellow)",
+    "var(--red)",
+    "var(--purple)",
+    "#79c0ff", // TODO: no v5 token for extended palette color
+    "#56d364", // TODO: no v5 token for extended palette color
+    "#e3b341", // TODO: no v5 token for extended palette color
   ];
 
   const allDates = new Set<string>();
@@ -174,7 +174,7 @@ export function MultiLineChart({
         aria-label="Insufficient data for trend chart"
         role="img"
       >
-        <text x="10" y="20" fill="#8b949e" fontSize="12">
+        <text x="10" y="20" fill="var(--text-muted)" fontSize="12">
           Insufficient data for trend chart
         </text>
       </svg>
@@ -215,13 +215,13 @@ export function MultiLineChart({
           y1={y}
           x2={width - padR}
           y2={y}
-          stroke="#21262d"
+          stroke="var(--border)"
           strokeWidth="1"
         />
         <text
           x={padL - 5}
           y={y + 4}
-          fill="#8b949e"
+          fill="var(--text-muted)"
           fontSize="10"
           textAnchor="end"
         >
@@ -243,14 +243,14 @@ export function MultiLineChart({
           y1={padT}
           x2={x}
           y2={padT + chartH}
-          stroke="#d29922"
+          stroke="var(--yellow)"
           strokeWidth="1"
           strokeDasharray="4,4"
         />
         <text
           x={x}
           y={padT - 2}
-          fill="#d29922"
+          fill="var(--yellow)"
           fontSize="9"
           textAnchor="middle"
         >
@@ -303,7 +303,7 @@ export function MultiLineChart({
           fill={color}
           rx="2"
         />
-        <text x={x + 14} y={height - 6} fill="#c9d1d9" fontSize="10">
+        <text x={x + 14} y={height - 6} fill="var(--text)" fontSize="10">
           {stage}
         </text>
       </g>
@@ -316,7 +316,7 @@ export function MultiLineChart({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       xmlns="http://www.w3.org/2000/svg"
-      style={{ background: "#0d1117", borderRadius: "6px" }}
+      style={{ background: "var(--bg)", borderRadius: "6px" }}
       aria-label="Per-stage token trend chart"
       role="img"
     >
