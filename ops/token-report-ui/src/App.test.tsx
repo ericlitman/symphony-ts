@@ -1,6 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import App from "./App.tsx";
+import { Sparkline } from "./components/chartUtils.tsx";
 import {
   EfficiencyScorecard,
   ExecutiveSummary,
@@ -18,7 +19,6 @@ import {
   TicketCostChart,
   reportCSS,
 } from "./components/index.ts";
-import { Sparkline } from "./components/chartUtils.tsx";
 import analysisData from "./data/analysis.json";
 import {
   buildAreaString,
