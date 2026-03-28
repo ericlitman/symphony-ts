@@ -352,6 +352,7 @@ function createMockDeployProcess(
   lines: string[],
   exitCode = 0,
 ): import("node:child_process").ChildProcess {
+  // biome-ignore format: multi-line typeof import() breaks esbuild
   const { EventEmitter } = require("node:events") as typeof import("node:events");
   const { Readable } = require("node:stream") as typeof import("node:stream");
 
