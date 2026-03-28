@@ -151,20 +151,17 @@ describe("ExecutiveSummary", () => {
 
 describe("SYMPH-190 formula verification", () => {
   it("fixture has wow_delta_pct on total_tokens", () => {
-    expect(analysisData.executive_summary.total_tokens).toHaveProperty(
+    expect(data.executive_summary.total_tokens).toHaveProperty(
       "wow_delta_pct",
     );
-    expect(analysisData.executive_summary.total_tokens.wow_delta_pct).toBe(
+    expect(data.executive_summary.total_tokens.wow_delta_pct).toBe(
       12.3,
     );
   });
 
   it("fixture has wow_delta_pct on per_ticket_trend", () => {
-    expect(analysisData.per_ticket_trend).toHaveProperty("wow_delta_pct");
-    expect(
-      (analysisData.per_ticket_trend as { wow_delta_pct: number })
-        .wow_delta_pct,
-    ).toBe(-5.2);
+    expect(data.per_ticket_trend).toHaveProperty("wow_delta_pct");
+    expect(data.per_ticket_trend.wow_delta_pct).toBe(-5.2);
   });
 
   it("cache delta formula: (current - trend_7d) * 100 = 4pp", () => {
