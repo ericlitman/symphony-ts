@@ -1,10 +1,16 @@
-import { execFile as execFileCb } from "node:child_process";
+import {
+  type ChildProcess,
+  execFile as execFileCb,
+  spawn,
+} from "node:child_process";
 import {
   type IncomingMessage,
   type Server,
   type ServerResponse,
   createServer,
 } from "node:http";
+import { dirname, resolve as pathResolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_OBSERVABILITY_REFRESH_MS,
@@ -113,6 +119,20 @@ export interface DashboardServerHost {
 /** Async function that runs `gh` with the given args and returns stdout. */
 export type ExecGh = (args: string[]) => Promise<string>;
 
+/** Async function that runs the deploy script with the given args and returns stdout. */
+export type ExecDeploy = (args: string[]) => Promise<string>;
+
+/** Spawns the deploy script with the given args and returns the child process for streaming. */
+export type SpawnDeploy = (args: string[]) => ChildProcess;
+
+export interface DeployPreviewResponse {
+  current_version: string;
+  target_version: string;
+  commits_ahead: number;
+  actions: string[];
+  running_issues_count: number;
+}
+
 export interface DashboardServerOptions {
   host: DashboardServerHost;
   hostname?: string;
@@ -124,6 +144,10 @@ export interface DashboardServerOptions {
   githubRepoSlug?: string;
   /** Injectable gh CLI executor for testing. Defaults to child_process.execFile("gh", ...). */
   execGh?: ExecGh;
+  /** Injectable deploy script executor for testing. Defaults to running ops/symphony-deploy. */
+  execDeploy?: ExecDeploy;
+  /** Injectable deploy script spawner for streaming. Defaults to spawning ops/symphony-deploy. */
+  spawnDeploy?: SpawnDeploy;
 }
 
 export interface DashboardServerInstance {
@@ -214,6 +238,8 @@ export function createDashboardRequestHandler(
   };
   const githubRepoSlug = resolveRepoSlug(options.githubRepoSlug);
   const execGh = options.execGh ?? defaultExecGh;
+  const execDeploy = options.execDeploy ?? defaultExecDeploy;
+  const spawnDeployFn = options.spawnDeploy ?? defaultSpawnDeploy;
   let githubQueueCache: GitHubQueueCache | null = null;
 
   return async (request, response) => {
@@ -289,6 +315,60 @@ export function createDashboardRequestHandler(
         await readRequestBody(request);
         const refresh = await options.host.requestRefresh();
         writeJson(response, 202, refresh);
+        return;
+      }
+
+      if (url.pathname === "/api/v1/deploy/preview") {
+        if (method !== "POST") {
+          writeMethodNotAllowed(response, ["POST"]);
+          return;
+        }
+
+        await readRequestBody(request);
+
+        try {
+          const snapshot = await readSnapshot(options.host, snapshotTimeoutMs);
+          const runningCount = snapshot.counts.running;
+
+          const stdout = await execDeploy(["--dry-run"]);
+          const preview = parseDeployDryRunOutput(stdout, runningCount);
+          writeJson(response, 200, preview);
+        } catch (error) {
+          writeJsonError(response, 500, ERROR_CODES.deployFailed, {
+            message:
+              error instanceof Error
+                ? error.message
+                : "Deploy preview failed.",
+          });
+        }
+        return;
+      }
+
+      if (url.pathname === "/api/v1/deploy") {
+        if (method !== "POST") {
+          writeMethodNotAllowed(response, ["POST"]);
+          return;
+        }
+
+        await readRequestBody(request);
+
+        response.statusCode = 200;
+        response.setHeader("content-type", "text/event-stream");
+        response.setHeader("cache-control", "no-cache");
+        response.setHeader("connection", "keep-alive");
+        response.flushHeaders();
+
+        try {
+          await streamDeploy(response, spawnDeployFn);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Deploy failed.";
+          writeSseEvent(response, "deploy_complete", {
+            success: false,
+            message,
+          });
+          response.end();
+        }
         return;
       }
 
@@ -559,6 +639,155 @@ async function fetchGitHubQueue(
     rejected,
     alerts,
   };
+}
+
+// ── Deploy types & helpers ────────────────────────────────────────
+
+function resolveDeployScriptPath(): string {
+  const thisFile = fileURLToPath(import.meta.url);
+  // src/observability/dashboard-server.ts -> repo root -> ops/symphony-deploy
+  const repoRoot = pathResolve(dirname(thisFile), "..", "..");
+  return pathResolve(repoRoot, "ops", "symphony-deploy");
+}
+
+function defaultExecDeploy(args: string[]): Promise<string> {
+  const scriptPath = resolveDeployScriptPath();
+  return new Promise((resolve, reject) => {
+    execFileCb(
+      scriptPath,
+      args,
+      { encoding: "utf-8", maxBuffer: 2 * 1024 * 1024, timeout: 120_000 },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(stdout);
+      },
+    );
+  });
+}
+
+function defaultSpawnDeploy(args: string[]): ChildProcess {
+  const scriptPath = resolveDeployScriptPath();
+  return spawn(scriptPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+}
+
+function parseDeployDryRunOutput(
+  stdout: string,
+  runningIssuesCount: number,
+): DeployPreviewResponse {
+  const lines = stdout.split("\n");
+
+  let currentVersion = "(unknown)";
+  let targetVersion = "(unknown)";
+  let commitsAhead = 0;
+  const actions: string[] = [];
+
+  for (const line of lines) {
+    // Strip ANSI escape codes for parsing
+    const clean = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
+
+    // Match "Pre-deploy version: <version>"
+    const preVersionMatch = clean.match(/Pre-deploy version:\s*(.+)/);
+    if (preVersionMatch?.[1] !== undefined) {
+      currentVersion = preVersionMatch[1].trim();
+    }
+
+    // Match "Post-deploy version: <version>"
+    const postVersionMatch = clean.match(/Post-deploy version:\s*(.+)/);
+    if (postVersionMatch?.[1] !== undefined) {
+      targetVersion = postVersionMatch[1].trim();
+    }
+
+    // Match "symphony-ts: <pre_sha> → <post_sha>" from summary
+    const shaMatch = clean.match(
+      /symphony-ts:\s+([a-f0-9]+)\s+→\s+([a-f0-9]+)/,
+    );
+    if (shaMatch?.[1] !== undefined && shaMatch[2] !== undefined) {
+      if (shaMatch[1] !== shaMatch[2]) {
+        // Count commits between SHAs — dry-run doesn't give exact count,
+        // but we mark at least 1 if SHAs differ
+        commitsAhead = 1;
+      }
+    }
+
+    // Collect [dry-run] action lines
+    const dryRunMatch = clean.match(/\[dry-run\]\s+(.+)/);
+    if (dryRunMatch?.[1] !== undefined) {
+      actions.push(dryRunMatch[1].trim());
+    }
+  }
+
+  return {
+    current_version: currentVersion,
+    target_version: targetVersion,
+    commits_ahead: commitsAhead,
+    actions,
+    running_issues_count: runningIssuesCount,
+  };
+}
+
+function writeSseEvent(
+  response: ServerResponse,
+  event: string,
+  data: unknown,
+): void {
+  response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+async function streamDeploy(
+  response: ServerResponse,
+  spawnDeployFn: SpawnDeploy,
+): Promise<void> {
+  return await new Promise<void>((resolve, reject) => {
+    const child = spawnDeployFn([]);
+    let buffer = "";
+    let errBuffer = "";
+
+    const flushLine = (line: string) => {
+      writeSseEvent(response, "deploy_output", { line });
+    };
+
+    child.stdout?.setEncoding("utf-8");
+    child.stdout?.on("data", (chunk: string) => {
+      buffer += chunk;
+      const parts = buffer.split("\n");
+      // Keep the last partial line in the buffer
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        flushLine(part);
+      }
+    });
+
+    child.stderr?.setEncoding("utf-8");
+    child.stderr?.on("data", (chunk: string) => {
+      errBuffer += chunk;
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      // Flush any remaining buffer
+      if (buffer.length > 0) {
+        flushLine(buffer);
+        buffer = "";
+      }
+
+      const success = code === 0;
+      writeSseEvent(response, "deploy_complete", {
+        success,
+        exit_code: code,
+        message: success
+          ? "Deploy completed successfully."
+          : `Deploy failed with exit code ${code}.${errBuffer.length > 0 ? ` stderr: ${errBuffer.trim()}` : ""}`,
+      });
+      response.end();
+      resolve();
+    });
+  });
 }
 
 function writeJsonError(
