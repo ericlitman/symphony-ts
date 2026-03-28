@@ -11,7 +11,7 @@ describe("mobile-dashboard.html", () => {
 
   it("is a valid HTML document", () => {
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("<html lang=\"en\">");
+    expect(html).toContain('<html lang="en">');
     expect(html).toContain("</html>");
   });
 
@@ -87,7 +87,9 @@ describe("mobile-dashboard.html", () => {
     expect(html).toContain("hold-btn");
     expect(html).toContain("hold-to-confirm");
     // 2 second hold duration
-    expect(html).toMatch(/setTimeout\(\s*\(\)\s*=>\s*\{[^}]*\}\s*,\s*2000\s*\)/s);
+    expect(html).toMatch(
+      /setTimeout\(\s*\(\)\s*=>\s*\{[^}]*\}\s*,\s*2000\s*\)/s,
+    );
   });
 
   it("has CORS-compatible Access-Control-Allow-Origin: * pattern noted", () => {
@@ -103,7 +105,9 @@ describe("mobile-dashboard.html", () => {
     const scriptSection = html.slice(html.indexOf("<script>"));
     // Ensure no hardcoded fetch URLs to localhost
     expect(scriptSection).not.toMatch(/fetch\s*\(\s*['"]https?:\/\/localhost/);
-    expect(scriptSection).not.toMatch(/fetch\s*\(\s*['"]https?:\/\/127\.0\.0\.1/);
+    expect(scriptSection).not.toMatch(
+      /fetch\s*\(\s*['"]https?:\/\/127\.0\.0\.1/,
+    );
     // EventSource should use baseUrl variable, not hardcoded
     expect(scriptSection).toContain("${baseUrl}/api/v1/events");
   });
