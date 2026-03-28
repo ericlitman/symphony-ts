@@ -195,7 +195,7 @@ describe("OutlierAnalysis", () => {
     expect(html).toContain("SYMPH-98");
     expect(html).toContain("JONY-42");
     // SYMPH-179: multiplier displayed instead of z-score
-    expect(html).toContain("8.5<!-- -->x mean");
+    expect(html).toContain("8.5x mean");
     expect(html).toContain("mobilyze-llc/issue/SYMPH-98");
   });
 
@@ -212,8 +212,8 @@ describe("OutlierAnalysis", () => {
     const outliers = Array.isArray(data.outliers) ? data.outliers : [];
     const html = renderToString(<OutlierAnalysis outliers={outliers} />);
     // Multiplier = total_tokens / mean (Q-2 decision)
-    expect(html).toContain("8.5<!-- -->x mean");
-    expect(html).toContain("3.4<!-- -->x mean");
+    expect(html).toContain("8.5x mean");
+    expect(html).toContain("3.4x mean");
     // z-score should NOT appear in rendered output
     expect(html).not.toContain("z=");
     expect(html).not.toContain("z_score");
