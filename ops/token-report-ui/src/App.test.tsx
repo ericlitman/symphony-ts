@@ -220,7 +220,9 @@ describe("PerStageTrend", () => {
 
 describe("InflectionAttribution", () => {
   it("renders attribution entries with type labels", () => {
-    const inflection = (Array.isArray(data.inflections) ? data.inflections : [])[0];
+    const inflection = (
+      Array.isArray(data.inflections) ? data.inflections : []
+    )[0];
     const html = renderToString(
       <InflectionAttribution inflection={inflection} />,
     );
@@ -231,7 +233,9 @@ describe("InflectionAttribution", () => {
   });
 
   it("renders LLM insight when present", () => {
-    const inflection = (Array.isArray(data.inflections) ? data.inflections : [])[0];
+    const inflection = (
+      Array.isArray(data.inflections) ? data.inflections : []
+    )[0];
     const html = renderToString(
       <InflectionAttribution inflection={inflection} />,
     );
@@ -251,9 +255,7 @@ describe("InflectionAttribution", () => {
       attributions: [],
       llm_insight: null,
     };
-    const html = renderToString(
-      <InflectionAttribution inflection={empty} />,
-    );
+    const html = renderToString(<InflectionAttribution inflection={empty} />);
     // Should render nothing
     expect(html).toBe("");
   });
