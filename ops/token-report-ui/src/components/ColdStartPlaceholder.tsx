@@ -1,6 +1,7 @@
 /**
  * Reusable placeholder shown inside sections that require 7+ days of data
  * when the report is in cold-start mode (data_span_days < 7).
+ * Rebuilt with v5 inline styles (SYMPH-205).
  */
 
 export interface ColdStartPlaceholderProps {
@@ -19,19 +20,43 @@ export default function ColdStartPlaceholder({
     <div
       className="cold-start-placeholder"
       style={{
-        background: "var(--bg-card)",
-        border: "1px dashed var(--border)",
-        borderRadius: "6px",
-        padding: "24px",
+        background: "var(--color-surface)",
+        border: "var(--border-width) dashed var(--border-color)",
+        borderRadius: "var(--border-radius)",
+        padding: "var(--spacing-section)",
         textAlign: "center",
-        color: "var(--text-muted)",
+        color: "var(--color-text-secondary)",
       }}
     >
-      <div style={{ fontSize: "1.5rem", marginBottom: "8px" }}>📊</div>
-      <div style={{ fontWeight: 500, marginBottom: "4px" }}>
+      <div
+        style={{
+          fontSize: "var(--font-size-heading)",
+          marginBottom: "var(--spacing-element)",
+          lineHeight: "var(--line-height-heading)",
+        }}
+      >
+        📊
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--font-heading)",
+          fontWeight: "var(--font-weight-subheading)" as unknown as number,
+          fontSize: "var(--font-size-body)",
+          color: "var(--color-text)",
+          marginBottom: "var(--spacing-element)",
+          lineHeight: "var(--line-height-body)",
+        }}
+      >
         Collecting data&hellip;
       </div>
-      <div style={{ fontSize: "0.85rem" }}>
+      <div
+        style={{
+          fontFamily: "var(--font-body)",
+          fontSize: "var(--font-size-small)",
+          color: "var(--color-text-secondary)",
+          lineHeight: "var(--line-height-body)",
+        }}
+      >
         This section requires at least {requiredDays} days of data.{" "}
         {remaining > 0 && (
           <>
