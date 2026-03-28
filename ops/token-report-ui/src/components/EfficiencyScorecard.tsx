@@ -1,6 +1,7 @@
 /**
  * Section 2: Efficiency Scorecard
  * Converted from design reference EfficiencyScorecard.jsx.
+ * Rebuilt with inline styles per v5 design-ref (SYMPH-197).
  *
  * Note: Failure Rate row removed — now displayed in PipelineHealth component.
  */
@@ -55,6 +56,49 @@ function rangeText(
   return `30d: ${formatPct(metric.trend_30d, isRawPct)} → ${formatPct(metric.current, isRawPct)}`;
 }
 
+/* ── Inline style objects (SYMPH-197) ── */
+
+const metricRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 16px",
+  background: "var(--bg-card)",
+  border: "1px solid var(--border)",
+  borderRadius: "6px",
+  marginBottom: "8px",
+};
+
+const metricNameStyle: React.CSSProperties = {
+  color: "var(--text)",
+  fontWeight: 500,
+  minWidth: "140px",
+};
+
+const metricValueStyle: React.CSSProperties = {
+  color: "var(--text-bright)",
+  fontWeight: 600,
+  minWidth: "60px",
+  textAlign: "right",
+};
+
+const metricRangeStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "0.8rem",
+  marginLeft: "8px",
+};
+
+const metricSparklineStyle: React.CSSProperties = {
+  marginLeft: "16px",
+};
+
+const coldStartNoteStyle: React.CSSProperties = {
+  color: "var(--text-muted)",
+  fontSize: "0.85rem",
+  marginBottom: "12px",
+  fontStyle: "italic",
+};
+
 export default function EfficiencyScorecard({
   scorecard,
   series,
@@ -105,35 +149,20 @@ export default function EfficiencyScorecard({
     <section>
       <h2>Efficiency Scorecard</h2>
       {coldStart && (
-        <div
-          className="cold-start-scorecard-note"
-          style={{
-            color: "var(--text-muted)",
-            fontSize: "0.85rem",
-            marginBottom: "12px",
-            fontStyle: "italic",
-          }}
-        >
+        <div style={coldStartNoteStyle}>
           Trend data unavailable — requires 7+ days of history
         </div>
       )}
       {rows.map((row) => (
-        <div className="metric-row" key={row.name}>
-          <span className="metric-name">{row.name}</span>
-          <span className="metric-value">{row.value}</span>
+        <div key={row.name} style={metricRowStyle}>
+          <span style={metricNameStyle}>{row.name}</span>
+          <span style={metricValueStyle}>{row.value}</span>
           {row.range && (
-            <span
-              className="metric-range"
-              style={{
-                color: "var(--text-muted)",
-                fontSize: "0.8rem",
-                marginLeft: "8px",
-              }}
-            >
+            <span style={metricRangeStyle}>
               {row.range}
             </span>
           )}
-          <span className="metric-sparkline">
+          <span style={metricSparklineStyle}>
             <Sparkline values={row.sparkline} stroke={row.stroke} />
           </span>
         </div>
