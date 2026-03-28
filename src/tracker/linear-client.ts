@@ -129,7 +129,8 @@ export class LinearTrackerClient implements IssueTracker {
   private readonly fetchFn: typeof fetch;
   private readonly parentCache = new Map<
     string,
-    { identifier: string; title: string; url: string } | typeof NULL_PARENT_SENTINEL
+    | { identifier: string; title: string; url: string }
+    | typeof NULL_PARENT_SENTINEL
   >();
 
   constructor(options: LinearTrackerClientOptions) {
