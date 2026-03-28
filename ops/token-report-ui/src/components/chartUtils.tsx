@@ -110,12 +110,7 @@ export function Sparkline({
           </linearGradient>
         </defs>
       )}
-      {fill && (
-        <polygon
-          points={fillPoints}
-          fill={`url(#${gradientId})`}
-        />
-      )}
+      {fill && <polygon points={fillPoints} fill={`url(#${gradientId})`} />}
       <polyline
         points={points}
         fill="none"
