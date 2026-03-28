@@ -64,7 +64,8 @@ export default function PerProductBreakdown({
                   textAlign: "left",
                   color: "var(--color-text-secondary)",
                   fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                  fontWeight:
+                    "var(--font-weight-subheading)" as unknown as number,
                   padding: "var(--spacing-element) var(--spacing-group)",
                   borderBottom: "var(--border-width) solid var(--border-color)",
                   textTransform: "uppercase" as const,
@@ -78,7 +79,8 @@ export default function PerProductBreakdown({
                   textAlign: "right",
                   color: "var(--color-text-secondary)",
                   fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                  fontWeight:
+                    "var(--font-weight-subheading)" as unknown as number,
                   padding: "var(--spacing-element) var(--spacing-group)",
                   borderBottom: "var(--border-width) solid var(--border-color)",
                   textTransform: "uppercase" as const,
@@ -92,7 +94,8 @@ export default function PerProductBreakdown({
                   textAlign: "right",
                   color: "var(--color-text-secondary)",
                   fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                  fontWeight:
+                    "var(--font-weight-subheading)" as unknown as number,
                   padding: "var(--spacing-element) var(--spacing-group)",
                   borderBottom: "var(--border-width) solid var(--border-color)",
                   textTransform: "uppercase" as const,
@@ -106,7 +109,8 @@ export default function PerProductBreakdown({
                   textAlign: "right",
                   color: "var(--color-text-secondary)",
                   fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                  fontWeight:
+                    "var(--font-weight-subheading)" as unknown as number,
                   padding: "var(--spacing-element) var(--spacing-group)",
                   borderBottom: "var(--border-width) solid var(--border-color)",
                   textTransform: "uppercase" as const,
@@ -120,7 +124,8 @@ export default function PerProductBreakdown({
                   textAlign: "left",
                   color: "var(--color-text-secondary)",
                   fontSize: "var(--font-size-caption)",
-                  fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                  fontWeight:
+                    "var(--font-weight-subheading)" as unknown as number,
                   padding: "var(--spacing-element) var(--spacing-group)",
                   borderBottom: "var(--border-width) solid var(--border-color)",
                   textTransform: "uppercase" as const,
@@ -139,9 +144,11 @@ export default function PerProductBreakdown({
                   <td
                     style={{
                       padding: "var(--spacing-element) var(--spacing-group)",
-                      borderBottom: "var(--border-width) solid var(--border-color)",
+                      borderBottom:
+                        "var(--border-width) solid var(--border-color)",
                       color: "var(--color-text)",
-                      fontWeight: "var(--font-weight-subheading)" as unknown as number,
+                      fontWeight:
+                        "var(--font-weight-subheading)" as unknown as number,
                     }}
                   >
                     {name}
@@ -150,7 +157,8 @@ export default function PerProductBreakdown({
                     style={{
                       textAlign: "right",
                       padding: "var(--spacing-element) var(--spacing-group)",
-                      borderBottom: "var(--border-width) solid var(--border-color)",
+                      borderBottom:
+                        "var(--border-width) solid var(--border-color)",
                       color: "var(--color-text)",
                     }}
                   >
@@ -160,7 +168,8 @@ export default function PerProductBreakdown({
                     style={{
                       textAlign: "right",
                       padding: "var(--spacing-element) var(--spacing-group)",
-                      borderBottom: "var(--border-width) solid var(--border-color)",
+                      borderBottom:
+                        "var(--border-width) solid var(--border-color)",
                       color: "var(--color-text)",
                     }}
                   >
@@ -170,7 +179,8 @@ export default function PerProductBreakdown({
                     style={{
                       textAlign: "right",
                       padding: "var(--spacing-element) var(--spacing-group)",
-                      borderBottom: "var(--border-width) solid var(--border-color)",
+                      borderBottom:
+                        "var(--border-width) solid var(--border-color)",
                       color: "var(--color-text)",
                     }}
                   >
@@ -179,7 +189,8 @@ export default function PerProductBreakdown({
                   <td
                     style={{
                       padding: "var(--spacing-element) var(--spacing-group)",
-                      borderBottom: "var(--border-width) solid var(--border-color)",
+                      borderBottom:
+                        "var(--border-width) solid var(--border-color)",
                       color: "var(--color-text-secondary)",
                     }}
                   >
