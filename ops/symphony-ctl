@@ -713,7 +713,7 @@ _do_prune_branches() {
   info "Branches with deleted remote (safe to remove after squash-merge):"
   local found=false
   while IFS= read -r line; do
-    branch="${line##[* ] }"
+    branch="${line##[+* ] }"
     branch="${branch%% *}"
     [[ -z "$branch" ]] && continue
     [[ "$branch" == "main" || "$branch" == "master" || "$branch" == "$current_branch" ]] && continue
