@@ -1115,6 +1115,8 @@ for ((k=0; k<TOTAL; k++)); do
   # Extract priority if present
   pri_num=$(echo "${TASK_BODIES[$i]}" | grep -oE '\*\*Priority\*\*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
   linear_priority=${pri_num:-3}
+  # Linear priority max is 4 (0=none, 1=urgent, 2=high, 3=medium, 4=low)
+  [[ "$linear_priority" -gt 4 ]] && linear_priority=4
 
   # Write sub-issue body to temp file for description
   echo "$sub_body" > "$SPEC_TMPFILE"
