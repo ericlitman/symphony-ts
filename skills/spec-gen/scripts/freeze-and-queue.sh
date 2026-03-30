@@ -11,6 +11,14 @@
 # The WORKFLOW file provides: project_slug (from YAML frontmatter)
 # Auth: Uses LINEAR_API_KEY env var (schpet linear CLI picks it up automatically).
 # Team ID is resolved from the project via the Linear API.
+#
+# Dedup: Re-running with --update skips sub-issues whose titles already exist under
+# the parent. Known limitations:
+#   - --dry-run + --update does not show dedup info (dry-run is API-free by design)
+#   - If the spec is rewritten with new task titles, old children are not archived —
+#     cancel them manually in Linear before re-freezing
+#
+# Complexity: See SKILL.md "Known Constraints" — this script is at its bash limit.
 
 # Relation semantics (Linear GraphQL API):
 #   issueRelationCreate(input: { issueId: BLOCKER, relatedIssueId: BLOCKED, type: blocks })
@@ -580,6 +588,29 @@ while IFS= read -r line; do
   fi
 done <<< "$SPEC_CONTENT"
 
+# ── Parse Design section from parent spec ─────────────────────────────────────
+
+DESIGN_SECTION=""
+in_design=false
+while IFS= read -r line; do
+  if [[ "$line" =~ ^##\ Design$ ]]; then
+    in_design=true
+    DESIGN_SECTION+="## Design"$'\n'
+    continue
+  elif [[ "$in_design" == true && "$line" =~ ^##\  && ! "$line" =~ ^###\  ]]; then
+    break
+  fi
+  if [[ "$in_design" == true ]]; then
+    DESIGN_SECTION+="$line"$'\n'
+  fi
+done <<< "$SPEC_CONTENT"
+
+# Strip empty Design sections (bare heading with no content)
+design_body="${DESIGN_SECTION#"## Design"$'\n'}"
+if ! [[ "$design_body" =~ [^[:space:]] ]]; then
+  DESIGN_SECTION=""
+fi
+
 # ── Parse task scenario references ───────────────────────────────────────────
 
 declare -a TASK_SCENARIO_REFS
@@ -636,6 +667,12 @@ build_sub_issue_body() {
 
   output+="## Task Scope"$'\n'
   output+="$body"$'\n'
+
+  # Add design context from parent spec (between Task Scope and Scenarios)
+  if [[ -n "$DESIGN_SECTION" ]]; then
+    output+='> *Implementation context: JSON schemas, thresholds, and architecture notes are in **## Design** below.*'$'\n'$'\n'
+    output+="$DESIGN_SECTION"$'\n'
+  fi
 
   # Add matched scenarios
   if [[ -n "$task_ref" && $TOTAL_SCENARIOS -gt 0 ]]; then
@@ -981,6 +1018,37 @@ fi
 # F3: Set parent reference for sub-issue bodies (live mode uses Linear URL)
 PARENT_REF_LINE="Parent spec: [$PARENT_IDENTIFIER]($parent_url)"
 
+# ── Dedup: query existing children to avoid duplicates on re-run ────────────
+# On re-run (especially with --update), the parent may already have children from
+# a previous invocation. Query them by title to skip creation of duplicates.
+# Known limitation: --dry-run + --update does not show dedup info (dry-run is API-free).
+# Known behavior: if the spec is rewritten with entirely new task titles, old children
+# are not archived — cancel them manually in Linear before re-freezing.
+
+EXISTING_CHILDREN=""
+EXISTING_CHILDREN_JSON=""
+if [[ -n "$PARENT_ID" ]]; then
+  EXISTING_CHILDREN_JSON=$(run_with_timeout "querying existing children" $LINEAR_CLI api \
+    --variable "parentId=$PARENT_ID" \
+    'query($parentId: String!) { issue(id: $parentId) { children(first: 100) { nodes { id title identifier } } } }') || true
+  if [[ -n "$EXISTING_CHILDREN_JSON" ]]; then
+    while IFS= read -r child_title; do
+      [[ -n "$child_title" ]] && EXISTING_CHILDREN+="$child_title"$'\n'
+    done < <(echo "$EXISTING_CHILDREN_JSON" | jq -r '.data.issue.children.nodes[].title // empty' 2>/dev/null)
+    child_count=$(echo "$EXISTING_CHILDREN_JSON" | jq -r '.data.issue.children.nodes | length' 2>/dev/null || echo "0")
+    if [[ "$child_count" -gt 0 ]]; then
+      echo "Found $child_count existing children — will skip duplicates"
+    fi
+    [[ "$child_count" -eq 100 ]] && echo "WARNING: Parent has exactly 100 children — results may be truncated. Dedup may miss some." >&2
+  fi
+fi
+
+# Initialize dedup tracking array (required for set -u safety — all indices must exist)
+declare -a SKIPPED_CHILDREN
+for ((i=0; i<TOTAL; i++)); do
+  SKIPPED_CHILDREN[$i]="false"
+done
+
 # ── Phase 1: Create sub-issues with interleaved relations (no projectId) ─────
 # Sub-issues are created in Todo state WITHOUT projectId, sorted by priority.
 # After each sub-issue (except the first), a sequential blockedBy relation is
@@ -1001,9 +1069,40 @@ CREATED_RELATIONS=""
 prev_sub_id=""
 prev_sub_ident=""
 
+created_count=0
+skipped_count=0
+failed_count=0
+
 for ((k=0; k<TOTAL; k++)); do
   i="${SORTED_INDICES[$k]}"
   title="${TASK_TITLES[$i]}"
+
+  # Dedup: skip if a child with this title already exists under parent
+  if [[ -n "$EXISTING_CHILDREN" ]] && echo "$EXISTING_CHILDREN" | grep -qxF "$title"; then
+    read -r existing_id existing_ident < <(echo "$EXISTING_CHILDREN_JSON" | jq -r --arg t "$title" \
+      '[.data.issue.children.nodes[] | select(.title == $t)][0] | "\(.id // "")\t\(.identifier // "")"')
+    if [[ -n "$existing_id" ]]; then
+      SKIPPED_CHILDREN[$i]="true"
+      SUB_ISSUE_IDS[$i]="$existing_id"
+      SUB_ISSUE_IDENTIFIERS[$i]="$existing_ident"
+      echo "  Skipping (already exists): $existing_ident — $title"
+      # Chain bridge: link prev→this if prev was newly created (not also skipped)
+      if [[ $k -ge 1 && -n "$prev_sub_id" ]]; then
+        prev_task_idx="${SORTED_INDICES[$((k-1))]}"
+        if [[ "${SKIPPED_CHILDREN[$prev_task_idx]}" != "true" ]]; then
+          create_blocks_relation "$prev_sub_id" "$existing_id" "$prev_sub_ident" "$existing_ident" "sequential (dedup bridge)" \
+            || echo "  WARNING: dedup bridge relation failed — chain may have a gap" >&2
+        fi
+      fi
+      prev_sub_id="$existing_id"
+      prev_sub_ident="$existing_ident"
+      ((skipped_count++))
+      continue
+    else
+      echo "  WARNING: Found existing child '$title' but could not resolve its ID — creating new" >&2
+    fi
+  fi
+
   sub_body=$(build_sub_issue_body "$i")
 
   # Extract priority if present
@@ -1088,13 +1187,23 @@ GQLEOF
 
     prev_sub_id="$sub_id"
     prev_sub_ident="$sub_identifier"
+    ((created_count++))
   else
     echo "  FAILED: $title" >&2
     echo "  Response: $result" >&2
     SUB_ISSUE_IDS[$i]=""
     SUB_ISSUE_IDENTIFIERS[$i]=""
+    ((failed_count++))
   fi
 done
+
+# Phase 1 summary
+echo ""
+if [[ $skipped_count -eq $TOTAL ]]; then
+  echo "Phase 1 complete: all $TOTAL sub-issues already exist — nothing to create"
+else
+  echo "Phase 1 complete: $created_count created, $skipped_count skipped (already existed), $failed_count failed"
+fi
 
 # ── Phase 2: File-overlap relations (second pass) ────────────────────────────
 # Supplementary relations based on file overlap — don't affect dispatch order.
@@ -1105,6 +1214,10 @@ echo "Creating file-overlap blockedBy relations..."
 for ((i=0; i<TOTAL; i++)); do
   for ((j=i+1; j<TOTAL; j++)); do
     if detect_overlap "${TASK_SCOPES[$i]:-}" "${TASK_SCOPES[$j]:-}"; then
+      # Skip if both children already existed (relations preserved from first run)
+      if [[ "${SKIPPED_CHILDREN[$i]}" == "true" && "${SKIPPED_CHILDREN[$j]}" == "true" ]]; then
+        continue
+      fi
       blocker_id="${SUB_ISSUE_IDS[$i]:-}"
       blocked_id="${SUB_ISSUE_IDS[$j]:-}"
       blocker="${SUB_ISSUE_IDENTIFIERS[$i]:-}"
@@ -1140,6 +1253,11 @@ for ((k=0; k<TOTAL; k++)); do
   i="${SORTED_INDICES[$k]}"
   sub_id="${SUB_ISSUE_IDS[$i]:-}"
   sub_ident="${SUB_ISSUE_IDENTIFIERS[$i]:-}"
+  # Skip project assignment for children that already exist (already assigned)
+  if [[ "${SKIPPED_CHILDREN[$i]}" == "true" ]]; then
+    echo "  $sub_ident → already assigned (skipped)"
+    continue
+  fi
   if [[ -n "$sub_id" ]]; then
     GQL_TMPFILE=$(mktemp)
     cat > "$GQL_TMPFILE" <<'GQLEOF'
