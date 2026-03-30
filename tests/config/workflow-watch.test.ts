@@ -175,6 +175,58 @@ Prompt v2
 
     await watcher.close();
   });
+
+  it("reloads automatically when the base_config template file changes on disk", async () => {
+    const { workflowPath, baseConfigPath } = await writeWorkflowWithBase({
+      baseContent: `---
+tracker:
+  kind: linear
+  api_key: token
+  project_slug: BASE
+---
+Base prompt v1
+`,
+      productContent: `---
+base_config: ./TEMPLATE.md
+tracker:
+  project_slug: PRODUCT
+---
+Product identity line.
+`,
+    });
+
+    const onReload = vi.fn();
+    const watcher = await WorkflowWatcher.create({
+      workflowPath,
+      environment: {},
+      debounceMs: 25,
+      onReload,
+    });
+    watcher.start();
+
+    await writeFile(
+      baseConfigPath,
+      `---
+tracker:
+  kind: linear
+  api_key: token
+  project_slug: BASE
+---
+Base prompt v2
+`,
+      "utf8",
+    );
+
+    await vi.waitFor(() => {
+      expect(watcher.currentSnapshot.definition.promptTemplate).toBe(
+        "Base prompt v2\nProduct identity line.",
+      );
+    });
+
+    expect(onReload).toHaveBeenCalled();
+
+    await watcher.close();
+  });
 });
 
 async function writeWorkflow(content: string): Promise<string> {
@@ -183,4 +235,17 @@ async function writeWorkflow(content: string): Promise<string> {
   const workflowPath = join(directory, "WORKFLOW.md");
   await writeFile(workflowPath, content, "utf8");
   return workflowPath;
+}
+
+async function writeWorkflowWithBase(input: {
+  baseContent: string;
+  productContent: string;
+}): Promise<{ workflowPath: string; baseConfigPath: string }> {
+  const directory = await mkdtemp(join(tmpdir(), "symphony-task5-base-"));
+  tempDirs.push(directory);
+  const baseConfigPath = join(directory, "TEMPLATE.md");
+  const workflowPath = join(directory, "WORKFLOW.md");
+  await writeFile(baseConfigPath, input.baseContent, "utf8");
+  await writeFile(workflowPath, input.productContent, "utf8");
+  return { workflowPath, baseConfigPath };
 }

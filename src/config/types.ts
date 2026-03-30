@@ -143,6 +143,7 @@ export type DispatchValidationResult =
 export interface WorkflowSnapshot {
   definition: {
     workflowPath: string;
+    baseConfigPath?: string;
     config: Record<string, unknown>;
     promptTemplate: string;
   };
