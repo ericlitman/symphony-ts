@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# claude-usage — fetch Claude account usage from the Anthropic API
+# Usage: claude-usage [--json]
+#
+# Reads OAuth token from macOS Keychain, queries usage API,
+# reads account metadata from ~/.claude-swap-backup/sequence.json,
+# and outputs usage data as JSON (--json) or human-readable summary (default).
+# Writes per-account utilization to ~/.symphony/usage-cache.json.
+
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Colors (disabled if not a terminal)
+if [[ -t 1 ]]; then
+  RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+else
+  RED=''; GREEN=''; YELLOW=''; CYAN=''; NC=''
+fi
+
+info()  { echo -e "${CYAN}▸${NC} $*"; }
+ok()    { echo -e "${GREEN}✓${NC} $*"; }
+warn()  { echo -e "${YELLOW}⚠${NC} $*" >&2; }
+die()   { echo -e "${RED}✗${NC} $*" >&2; exit 1; }
+
+# --- Flags ---
+
+OUTPUT_JSON=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) OUTPUT_JSON=true ;;
+    --help|-h)
+      echo "Usage: claude-usage [--json]"
+      echo "  --json    Output raw JSON instead of human-readable summary"
+      exit 0
+      ;;
+    *) die "Unknown flag: $1" ;;
+  esac
+  shift
+done
+
+# --- Read OAuth token from Keychain ---
+
+KEYCHAIN_USER="${CLAUDE_USAGE_KEYCHAIN_USER:-$(whoami)}"
+KEYCHAIN_RAW=""
+KEYCHAIN_RAW=$(security find-generic-password -w -s "Claude Code-credentials" -a "$KEYCHAIN_USER" 2>/dev/null) \
+  || die "Failed to read Claude credentials from Keychain. Is Claude Code signed in?"
+
+if [[ -z "$KEYCHAIN_RAW" ]]; then
+  die "Keychain returned empty credentials. Is Claude Code signed in?"
+fi
+
+ACCESS_TOKEN=""
+ACCESS_TOKEN=$(echo "$KEYCHAIN_RAW" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null) \
+  || die "Failed to parse Keychain JSON. Unexpected credential format."
+
+if [[ -z "$ACCESS_TOKEN" ]]; then
+  die "No OAuth access token found in Keychain credentials."
+fi
+
+# --- Fetch usage from API ---
+
+USAGE_API_URL="${CLAUDE_USAGE_API_URL:-https://api.anthropic.com/api/oauth/usage}"
+
+API_RESPONSE=""
+HTTP_CODE=""
+API_RESPONSE=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "anthropic-beta: oauth-2025-04-20" \
+  "$USAGE_API_URL" 2>/dev/null) \
+  || die "Failed to reach usage API at $USAGE_API_URL"
+
+HTTP_CODE=$(echo "$API_RESPONSE" | tail -1)
+API_BODY=$(echo "$API_RESPONSE" | sed '$d')
+
+if [[ "$HTTP_CODE" != "200" ]]; then
+  die "Usage API returned HTTP $HTTP_CODE"
+fi
+
+# --- Validate API response shape ---
+
+FIVE_HOUR_UTIL=$(echo "$API_BODY" | jq '.five_hour.utilization // empty' 2>/dev/null) || true
+FIVE_HOUR_RESETS=$(echo "$API_BODY" | jq -r '.five_hour.resets_at // empty' 2>/dev/null) || true
+SEVEN_DAY_UTIL=$(echo "$API_BODY" | jq '.seven_day.utilization // empty' 2>/dev/null) || true
+SEVEN_DAY_RESETS=$(echo "$API_BODY" | jq -r '.seven_day.resets_at // empty' 2>/dev/null) || true
+
+if [[ -z "$FIVE_HOUR_UTIL" || -z "$FIVE_HOUR_RESETS" ]]; then
+  die "Unexpected API response format: missing five_hour.utilization or five_hour.resets_at"
+fi
+
+if [[ -z "$SEVEN_DAY_UTIL" || -z "$SEVEN_DAY_RESETS" ]]; then
+  die "Unexpected API response format: missing seven_day.utilization or seven_day.resets_at"
+fi
+
+# --- Read sequence.json for account metadata ---
+
+SEQUENCE_FILE="$HOME/.claude-swap-backup/sequence.json"
+ACTIVE_ACCOUNT_JSON="null"
+ACCOUNTS_JSON="[]"
+
+if [[ -f "$SEQUENCE_FILE" ]]; then
+  ACTIVE_NUM=$(jq -r '.activeAccountNumber // empty' "$SEQUENCE_FILE" 2>/dev/null) || true
+
+  if [[ -n "$ACTIVE_NUM" ]]; then
+    ACTIVE_EMAIL=$(jq -r ".accounts[\"$ACTIVE_NUM\"].email // empty" "$SEQUENCE_FILE" 2>/dev/null) || true
+    ACTIVE_ORG=$(jq -r ".accounts[\"$ACTIVE_NUM\"].organizationName // empty" "$SEQUENCE_FILE" 2>/dev/null) || true
+
+    if [[ -n "$ACTIVE_EMAIL" ]]; then
+      ACTIVE_ACCOUNT_JSON=$(jq -n \
+        --argjson num "$ACTIVE_NUM" \
+        --arg email "$ACTIVE_EMAIL" \
+        --arg org "${ACTIVE_ORG:-}" \
+        '{account_number: $num, email: $email, org: $org}')
+    fi
+  fi
+
+  # Build accounts array from all keys in .accounts
+  ACCOUNTS_JSON=$(jq '[.accounts | to_entries[] | {account_number: (.key | tonumber), email: .value.email, org: .value.organizationName}]' "$SEQUENCE_FILE" 2>/dev/null) || ACCOUNTS_JSON="[]"
+fi
+
+# --- Write per-account cache ---
+
+CACHE_DIR="$HOME/.symphony"
+CACHE_FILE="$CACHE_DIR/usage-cache.json"
+mkdir -p "$CACHE_DIR"
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+if [[ "$ACTIVE_ACCOUNT_JSON" != "null" ]]; then
+  ACCOUNT_KEY=$(echo "$ACTIVE_ACCOUNT_JSON" | jq -r '.account_number')
+
+  CACHE_ENTRY=$(jq -n \
+    --argjson five_hour "$FIVE_HOUR_UTIL" \
+    --argjson seven_day "$SEVEN_DAY_UTIL" \
+    --arg five_hour_resets_at "$FIVE_HOUR_RESETS" \
+    --arg seven_day_resets_at "$SEVEN_DAY_RESETS" \
+    --arg timestamp "$TIMESTAMP" \
+    '{five_hour: $five_hour, seven_day: $seven_day, five_hour_resets_at: $five_hour_resets_at, seven_day_resets_at: $seven_day_resets_at, timestamp: $timestamp}')
+
+  # Merge with existing cache (read existing, update key, write back)
+  if [[ -f "$CACHE_FILE" ]]; then
+    EXISTING_CACHE=$(cat "$CACHE_FILE" 2>/dev/null) || EXISTING_CACHE="{}"
+  else
+    EXISTING_CACHE="{}"
+  fi
+
+  echo "$EXISTING_CACHE" | jq --argjson entry "$CACHE_ENTRY" --arg key "$ACCOUNT_KEY" '.[$key] = $entry' > "$CACHE_FILE"
+fi
+
+# --- Output ---
+
+if [[ "$OUTPUT_JSON" == "true" ]]; then
+  jq -n \
+    --argjson five_hour_util "$FIVE_HOUR_UTIL" \
+    --arg five_hour_resets "$FIVE_HOUR_RESETS" \
+    --argjson seven_day_util "$SEVEN_DAY_UTIL" \
+    --arg seven_day_resets "$SEVEN_DAY_RESETS" \
+    --argjson active_account "$ACTIVE_ACCOUNT_JSON" \
+    --argjson accounts "$ACCOUNTS_JSON" \
+    '{
+      five_hour: { utilization: $five_hour_util, resets_at: $five_hour_resets },
+      seven_day: { utilization: $seven_day_util, resets_at: $seven_day_resets },
+      active_account: $active_account,
+      accounts: $accounts
+    }'
+else
+  echo ""
+  echo "Claude Usage Summary"
+  echo "===================="
+
+  if [[ "$ACTIVE_ACCOUNT_JSON" != "null" ]]; then
+    ACCT_EMAIL=$(echo "$ACTIVE_ACCOUNT_JSON" | jq -r '.email')
+    ACCT_ORG=$(echo "$ACTIVE_ACCOUNT_JSON" | jq -r '.org')
+    echo "Account:    $ACCT_EMAIL ($ACCT_ORG)"
+  fi
+
+  echo ""
+  echo "5-hour window:  ${FIVE_HOUR_UTIL}% used"
+  echo "  Resets at:    $FIVE_HOUR_RESETS"
+  echo ""
+  echo "Weekly window:  ${SEVEN_DAY_UTIL}% used"
+  echo "  Resets at:    $SEVEN_DAY_RESETS"
+  echo ""
+fi
