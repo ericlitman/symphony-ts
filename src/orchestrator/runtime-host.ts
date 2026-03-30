@@ -1,6 +1,13 @@
-import { createWriteStream } from "node:fs";
+import { spawn } from "node:child_process";
+import {
+  closeSync,
+  createWriteStream,
+  constants as fsConstants,
+  mkdirSync,
+  openSync,
+} from "node:fs";
 import { access, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Writable } from "node:stream";
 
 import type {
@@ -131,6 +138,9 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
 
   private readonly logger: StructuredLogger | null;
 
+  static readonly PRUNE_DEBOUNCE_MS = 300_000;
+
+  #lastPruneAt = 0;
   private readonly workers = new Map<string, WorkerExecution>();
 
   private readonly orchestrator: OrchestratorCore;
@@ -700,6 +710,7 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
 
     if (execution.stopRequest?.cleanupWorkspace === true) {
       await this.workspaceManager.removeForIssue(execution.issueId);
+      this.pruneLocalBranches();
     }
 
     const lastTurnMessage = execution.lastResult?.lastTurn?.message;
@@ -761,6 +772,46 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
         capturedFirstDispatchedAt,
         durationMs,
       });
+    }
+  }
+
+  private pruneLocalBranches(): void {
+    if (process.env.SYMPHONY_SKIP_BRANCH_PRUNE === "1") {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.#lastPruneAt < OrchestratorRuntimeHost.PRUNE_DEBOUNCE_MS) {
+      void this.logger?.info(
+        "branch_prune_debounced",
+        "Branch prune skipped (debounce)",
+      );
+      return;
+    }
+    this.#lastPruneAt = now;
+
+    const symphonyRoot = resolve(dirname(this.config.workflowPath), "../..");
+    const ctlPath = join(symphonyRoot, "ops", "symphony-ctl");
+    const logPath = join(symphonyRoot, "ops", "logs", "prune.log");
+
+    void this.logger?.info("branch_prune_triggered", "Spawning branch prune");
+
+    try {
+      mkdirSync(dirname(logPath), { recursive: true });
+      const logFd = openSync(
+        logPath,
+        fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND,
+      );
+      const child = spawn(ctlPath, ["prune-branches", "--execute"], {
+        cwd: symphonyRoot,
+        stdio: ["ignore", logFd, logFd],
+        detached: true,
+      });
+      child.on("error", () => {});
+      child.unref();
+      closeSync(logFd);
+    } catch {
+      // Best effort — if log file or spawn fails, skip silently
     }
   }
 
