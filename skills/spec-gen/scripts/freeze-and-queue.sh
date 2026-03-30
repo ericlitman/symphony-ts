@@ -1079,7 +1079,7 @@ for ((k=0; k<TOTAL; k++)); do
 
   # Dedup: skip if a child with this title already exists under parent
   if [[ -n "$EXISTING_CHILDREN" ]] && echo "$EXISTING_CHILDREN" | grep -qxF "$title"; then
-    read -r existing_id existing_ident < <(echo "$EXISTING_CHILDREN_JSON" | jq -r --arg t "$title" \
+    IFS=$'\t' read -r existing_id existing_ident < <(echo "$EXISTING_CHILDREN_JSON" | jq -r --arg t "$title" \
       '[.data.issue.children.nodes[] | select(.title == $t)][0] | "\(.id // "")\t\(.identifier // "")"')
     if [[ -n "$existing_id" ]]; then
       SKIPPED_CHILDREN[$i]="true"
@@ -1090,8 +1090,12 @@ for ((k=0; k<TOTAL; k++)); do
       if [[ $k -ge 1 && -n "$prev_sub_id" ]]; then
         prev_task_idx="${SORTED_INDICES[$((k-1))]}"
         if [[ "${SKIPPED_CHILDREN[$prev_task_idx]}" != "true" ]]; then
-          create_blocks_relation "$prev_sub_id" "$existing_id" "$prev_sub_ident" "$existing_ident" "sequential (dedup bridge)" \
-            || echo "  WARNING: dedup bridge relation failed — chain may have a gap" >&2
+          if create_blocks_relation "$prev_sub_id" "$existing_id" "$prev_sub_ident" "$existing_ident" "sequential (dedup bridge)"; then
+            CREATED_RELATIONS="${CREATED_RELATIONS}|${prev_sub_ident}:${existing_ident}"
+            ((relation_count++))
+          else
+            echo "  WARNING: dedup bridge relation failed — chain may have a gap" >&2
+          fi
         fi
       fi
       prev_sub_id="$existing_id"
