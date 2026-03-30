@@ -14,7 +14,12 @@ import {
   reportCSS,
 } from "./components/index.ts";
 import analysisData from "./data/analysis.json";
-import type { AnalysisData, DailySeries, Inflection, Outlier } from "./types.ts";
+import type {
+  AnalysisData,
+  DailySeries,
+  Inflection,
+  Outlier,
+} from "./types.ts";
 
 const data = analysisData as AnalysisData;
 const isColdStart = data.cold_start === true && data.data_span_days < 7;
