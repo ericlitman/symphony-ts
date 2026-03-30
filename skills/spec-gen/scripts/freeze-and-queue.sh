@@ -433,7 +433,7 @@ while IFS= read -r line; do
       TASK_BODIES[$task_idx]="$current_body"
       TASK_SCOPES[$task_idx]="$current_scope"
     fi
-    ((task_idx++))
+    ((task_idx++)) || true
     TASK_TITLES[$task_idx]="${BASH_REMATCH[1]}"
     current_body=""
     current_scope=""
@@ -549,7 +549,7 @@ while IFS= read -r line; do
     if [[ $scenario_idx -ge 0 ]]; then
       SCENARIO_BODIES[$scenario_idx]="$current_scenario_body"
     fi
-    ((scenario_idx++))
+    ((scenario_idx++)) || true
     current_scenario_name="${BASH_REMATCH[1]}"
     SCENARIO_NAMES[$scenario_idx]="$current_scenario_name"
     SCENARIO_FEATURES[$scenario_idx]="$current_feature"
@@ -681,7 +681,7 @@ build_sub_issue_body() {
     for ((s=0; s<TOTAL_SCENARIOS; s++)); do
       if match_scenario_to_task "${SCENARIO_NAMES[$s]}" "$task_ref" "${SCENARIO_FEATURES[$s]:-}"; then
         output+="${SCENARIO_BODIES[$s]}"$'\n'
-        ((matched++))
+        ((matched++)) || true
       fi
     done
     if [[ $matched -eq 0 ]]; then
@@ -715,7 +715,7 @@ if [[ $TOTAL -gt 0 && $TOTAL_SCENARIOS -gt 0 ]]; then
     matched=0
     for ((s=0; s<TOTAL_SCENARIOS; s++)); do
       if match_scenario_to_task "${SCENARIO_NAMES[$s]}" "$task_ref" "${SCENARIO_FEATURES[$s]:-}"; then
-        ((matched++))
+        ((matched++)) || true
       fi
     done
     if [[ $matched -eq 0 ]]; then
@@ -783,7 +783,7 @@ if [[ "$DRY_RUN" == true ]]; then
     if [[ $k -gt 0 ]]; then
       blocker_idx="${SORTED_INDICES[$((k-1))]}"
       echo "  → blocked by Task $((blocker_idx+1)) (${TASK_TITLES[$blocker_idx]})"
-      ((relation_count++))
+      ((relation_count++)) || true
     fi
     echo ""
   done
@@ -1036,7 +1036,7 @@ if [[ -n "$PARENT_ID" ]]; then
     while IFS= read -r child_title; do
       if [[ -n "$child_title" ]]; then
         EXISTING_CHILDREN+="$child_title"$'\n'
-        ((child_count++))
+        ((child_count++)) || true
       fi
     done < <(echo "$EXISTING_CHILDREN_JSON" | jq -r '.data.issue.children.nodes[].title // empty' 2>/dev/null)
     if [[ "$child_count" -gt 0 ]]; then
@@ -1095,7 +1095,7 @@ for ((k=0; k<TOTAL; k++)); do
         if [[ "${SKIPPED_CHILDREN[$prev_task_idx]}" != "true" ]]; then
           if create_blocks_relation "$prev_sub_id" "$existing_id" "$prev_sub_ident" "$existing_ident" "sequential (dedup bridge)"; then
             CREATED_RELATIONS="${CREATED_RELATIONS}|${prev_sub_ident}:${existing_ident}"
-            ((relation_count++))
+            ((relation_count++)) || true
           else
             echo "  WARNING: dedup bridge relation failed — chain may have a gap" >&2
           fi
@@ -1103,7 +1103,7 @@ for ((k=0; k<TOTAL; k++)); do
       fi
       prev_sub_id="$existing_id"
       prev_sub_ident="$existing_ident"
-      ((skipped_count++))
+      ((skipped_count++)) || true
       continue
     else
       echo "  WARNING: Found existing child '$title' but could not resolve its ID — creating new" >&2
@@ -1188,7 +1188,7 @@ GQLEOF
       if create_blocks_relation "$prev_sub_id" "$sub_id" "$prev_sub_ident" "$sub_identifier" "sequential"; then
         verify_blocking_relation "$prev_sub_id" "$sub_id" "$prev_sub_ident" "$sub_identifier"
         CREATED_RELATIONS="${CREATED_RELATIONS}|${prev_sub_ident}:${sub_identifier}"
-        ((relation_count++))
+        ((relation_count++)) || true
       fi
     fi
     # NOTE: verify_issue_creation is deferred to after project assignment (Phase 3).
@@ -1196,13 +1196,13 @@ GQLEOF
 
     prev_sub_id="$sub_id"
     prev_sub_ident="$sub_identifier"
-    ((created_count++))
+    ((created_count++)) || true
   else
     echo "  FAILED: $title" >&2
     echo "  Response: $result" >&2
     SUB_ISSUE_IDS[$i]=""
     SUB_ISSUE_IDENTIFIERS[$i]=""
-    ((failed_count++))
+    ((failed_count++)) || true
   fi
 done
 
@@ -1238,7 +1238,7 @@ for ((i=0; i<TOTAL; i++)); do
           if create_blocks_relation "$blocker_id" "$blocked_id" "$blocker" "$blocked" "file overlap"; then
             verify_blocking_relation "$blocker_id" "$blocked_id" "$blocker" "$blocked"
             CREATED_RELATIONS="${CREATED_RELATIONS}|${relation_key}"
-            ((relation_count++))
+            ((relation_count++)) || true
           fi
         fi
       fi
@@ -1288,7 +1288,7 @@ GQLEOF
     else
       echo "  WARNING: Failed to assign $sub_ident to project" >&2
       echo "  Response: $result" >&2
-      ((assign_failures++))
+      ((assign_failures++)) || true
     fi
     # Post-assignment verification: confirm project slug and parent
     verify_issue_creation "$sub_id" "$PROJECT_SLUG" "$PARENT_ID"
