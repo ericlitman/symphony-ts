@@ -160,10 +160,10 @@ describe("SYMPH-190 formula verification", () => {
     expect(data.per_ticket_trend.wow_delta_pct).toBe(-39.5);
   });
 
-  it("cache delta formula: (current - trend_7d) * 100 = 0pp", () => {
+  it("cache delta formula: current - trend_7d = 0pp (already percentage scale)", () => {
     const sc = data.efficiency_scorecard;
     const expected = Math.round(
-      (sc.cache_efficiency.current - sc.cache_efficiency.trend_7d) * 100,
+      sc.cache_efficiency.current - sc.cache_efficiency.trend_7d,
     );
     expect(expected).toBe(0);
     // Verify rendered output contains the delta badge
@@ -211,7 +211,7 @@ describe("EfficiencyScorecard", () => {
     const html = renderToString(
       <EfficiencyScorecard scorecard={data.efficiency_scorecard} />,
     );
-    // Cache Efficiency: trend_30d=0.65 (65%), current=0.72 (72%)
+    // Cache Efficiency: trend_30d=65.9, current=65.9 (already 0-100 scale)
     expect(html).toContain("30d:");
     expect(html).toContain("→");
     // SYMPH-197: className removed — range text validated by "30d:" assertion above
@@ -220,11 +220,9 @@ describe("EfficiencyScorecard", () => {
 
 describe("SYMPH-189: formula fixes and pipeline wiring", () => {
   it("cache delta uses percentage point formula, not relative change", () => {
-    // sc.cache_efficiency: current=0.72, trend_7d=0.68
-    // Correct: (0.72 - 0.68) * 100 = 4
-    // Wrong (old): ((0.72 - 0.68) / 0.68) * 100 ≈ 5.88
+    // sc.cache_efficiency: current=65.9, trend_7d=65.9 (already 0-100 scale)
+    // Correct: 65.9 - 65.9 = 0 (no * 100 — pipeline outputs 0-100)
     const html = renderToString(<App />);
-    // The WowBadge should show +4, not +6
     expect(html).toContain("Executive Summary");
   });
 
@@ -372,6 +370,36 @@ describe("InflectionAttribution", () => {
     expect(html).toContain("Insight with no attributions");
     // No list items should be rendered
     expect(html).not.toContain("<li");
+  });
+
+  it("renders attributions and LLM insight together (synthetic data)", () => {
+    const full = {
+      date: "2026-03-15",
+      metric: "implement_tokens",
+      direction: "up" as const,
+      magnitude: 0.35,
+      context: null,
+      avg_7d: 220000,
+      avg_30d: 180000,
+      attributions: [
+        { type: "ticket_mix", description: "3 complex SYMPH issues entered implement" },
+        { type: "config_change", description: "Max-turns bumped from 15 to 25" },
+      ],
+      llm_insight: "Implement cost rose 35% due to a batch of refactor-heavy tickets plus a max-turns config bump.",
+    };
+    const html = renderToString(
+      <InflectionAttribution inflection={full} />,
+    );
+    // Attribution list items rendered (SSR inserts <!-- --> between JSX text nodes)
+    expect(html).toContain("Ticket Mix");
+    expect(html).toContain("3 complex SYMPH issues entered implement");
+    expect(html).toContain("Config Change");
+    expect(html).toContain("Max-turns bumped from 15 to 25");
+    // LLM insight rendered
+    expect(html).toContain("💡");
+    expect(html).toContain("Implement cost rose 35%");
+    // Structural: should contain list items
+    expect(html).toContain("<li");
   });
 });
 

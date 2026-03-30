@@ -66,13 +66,13 @@ export default function App() {
   const tokensPerIssueMedian = data.per_ticket_trend.median;
   const tokensPerIssueMean = data.per_ticket_trend.mean;
   const uniqueIssues = es.unique_issues.value;
-  const cacheHitRate = (sc.cache_efficiency.current ?? 0) * 100;
+  const cacheHitRate = sc.cache_efficiency.current ?? 0;
 
   // Cache delta: percentage point difference (SYMPH-189)
   const cacheWow =
     sc.cache_efficiency.trend_7d != null
       ? Math.round(
-          (sc.cache_efficiency.current - sc.cache_efficiency.trend_7d) * 100,
+          sc.cache_efficiency.current - sc.cache_efficiency.trend_7d,
         )
       : null;
 
