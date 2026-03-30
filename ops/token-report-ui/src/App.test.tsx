@@ -152,7 +152,9 @@ describe("ExecutiveSummary", () => {
 describe("SYMPH-190 formula verification", () => {
   it("wow_delta_pct is absent when data_span_days < 14", () => {
     // With 8 days of data, the 14-day WoW gate prevents computation
-    expect(data.executive_summary.total_tokens.wow_delta_pct ?? null).toBeNull();
+    expect(
+      data.executive_summary.total_tokens.wow_delta_pct ?? null,
+    ).toBeNull();
   });
 
   it("fixture has wow_delta_pct on per_ticket_trend", () => {
@@ -312,9 +314,7 @@ describe("PerStageTrend", () => {
 
 describe("InflectionAttribution", () => {
   it("fixture has no inflections — inflections array is empty", () => {
-    const inflections = Array.isArray(data.inflections)
-      ? data.inflections
-      : [];
+    const inflections = Array.isArray(data.inflections) ? data.inflections : [];
     expect(inflections.length).toBe(0);
   });
 
@@ -382,14 +382,19 @@ describe("InflectionAttribution", () => {
       avg_7d: 220000,
       avg_30d: 180000,
       attributions: [
-        { type: "ticket_mix", description: "3 complex SYMPH issues entered implement" },
-        { type: "config_change", description: "Max-turns bumped from 15 to 25" },
+        {
+          type: "ticket_mix",
+          description: "3 complex SYMPH issues entered implement",
+        },
+        {
+          type: "config_change",
+          description: "Max-turns bumped from 15 to 25",
+        },
       ],
-      llm_insight: "Implement cost rose 35% due to a batch of refactor-heavy tickets plus a max-turns config bump.",
+      llm_insight:
+        "Implement cost rose 35% due to a batch of refactor-heavy tickets plus a max-turns config bump.",
     };
-    const html = renderToString(
-      <InflectionAttribution inflection={full} />,
-    );
+    const html = renderToString(<InflectionAttribution inflection={full} />);
     // Attribution list items rendered (SSR inserts <!-- --> between JSX text nodes)
     expect(html).toContain("Ticket Mix");
     expect(html).toContain("3 complex SYMPH issues entered implement");

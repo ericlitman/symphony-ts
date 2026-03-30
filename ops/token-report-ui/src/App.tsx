@@ -71,9 +71,7 @@ export default function App() {
   // Cache delta: percentage point difference (SYMPH-189)
   const cacheWow =
     sc.cache_efficiency.trend_7d != null
-      ? Math.round(
-          sc.cache_efficiency.current - sc.cache_efficiency.trend_7d,
-        )
+      ? Math.round(sc.cache_efficiency.current - sc.cache_efficiency.trend_7d)
       : null;
 
   // Build series from MetricWithTrend.series, falling back to daily_series (SYMPH-175)
