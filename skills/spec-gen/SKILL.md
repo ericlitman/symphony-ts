@@ -426,6 +426,10 @@ Idea → Draft
 - **Don't generate design.md for STANDARD features.** Only COMPLEX features need architectural documentation.
 - **Design bundles must be in git before spec generation.** The implementation agent accesses them via `git clone`, not the local filesystem. If `/export-design` was run but the bundle wasn't pushed, the pipeline agent on the remote machine won't have it. The Step 2 validation catches local-only bundles.
 
+## Known Constraints
+
+`freeze-and-queue.sh` is at the practical complexity ceiling for a bash script (~1300 lines with GraphQL mutation construction, multi-phase API orchestration, and array-indexed parallel state). Any feature beyond dedup + design context injection should be implemented as a TypeScript rewrite using the Linear SDK.
+
 ## Related Skills
 
 - `/spec-freeze` — freeze a drafted spec into Linear sub-issues for autonomous pipeline execution
