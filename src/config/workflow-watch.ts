@@ -57,6 +57,8 @@ export class WorkflowWatcher {
   #currentSnapshot: WorkflowSnapshot;
   #environment: NodeJS.ProcessEnv;
   #watcher: FSWatcher | null = null;
+  #baseConfigWatcher: FSWatcher | null = null;
+  #baseConfigPath: string | null = null;
   #debounceMs: number;
   #debounceTimer: ReturnType<typeof setTimeout> | null = null;
   #reloadInFlight: Promise<WorkflowReloadResult> | null = null;
@@ -66,12 +68,14 @@ export class WorkflowWatcher {
   private constructor(input: {
     currentSnapshot: WorkflowSnapshot;
     workflowPath: string;
+    baseConfigPath: string | null;
     environment: NodeJS.ProcessEnv;
     debounceMs: number;
     hooks: WorkflowWatcherHooks;
   }) {
     this.#currentSnapshot = input.currentSnapshot;
     this.workflowPath = input.workflowPath;
+    this.#baseConfigPath = input.baseConfigPath;
     this.#environment = input.environment;
     this.#debounceMs = input.debounceMs;
     this.#hooks = input.hooks;
@@ -90,6 +94,7 @@ export class WorkflowWatcher {
     return new WorkflowWatcher({
       currentSnapshot,
       workflowPath,
+      baseConfigPath: currentSnapshot.definition.baseConfigPath ?? null,
       environment,
       debounceMs: options.debounceMs ?? DEFAULT_WATCH_DEBOUNCE_MS,
       hooks: {
@@ -119,6 +124,8 @@ export class WorkflowWatcher {
         error,
       });
     });
+
+    this.#startBaseConfigWatcher();
 
     return this;
   }
@@ -153,6 +160,11 @@ export class WorkflowWatcher {
       this.#debounceTimer = null;
     }
 
+    if (this.#baseConfigWatcher) {
+      this.#baseConfigWatcher.close();
+      this.#baseConfigWatcher = null;
+    }
+
     if (this.#watcher) {
       this.#watcher.close();
       this.#watcher = null;
@@ -173,6 +185,12 @@ export class WorkflowWatcher {
       );
       const previousSnapshot = this.#currentSnapshot;
       this.#currentSnapshot = snapshot;
+
+      const newBaseConfigPath = snapshot.definition.baseConfigPath ?? null;
+      if (newBaseConfigPath !== this.#baseConfigPath) {
+        this.#baseConfigPath = newBaseConfigPath;
+        this.#startBaseConfigWatcher();
+      }
 
       const result = {
         ok: true,
@@ -210,6 +228,29 @@ export class WorkflowWatcher {
       this.#debounceTimer = null;
       void this.reload("filesystem_event");
     }, this.#debounceMs);
+  }
+
+  #startBaseConfigWatcher(): void {
+    if (this.#baseConfigWatcher) {
+      this.#baseConfigWatcher.close();
+      this.#baseConfigWatcher = null;
+    }
+
+    if (!this.#baseConfigPath) {
+      return;
+    }
+
+    this.#baseConfigWatcher = watch(this.#baseConfigPath, () => {
+      this.#scheduleReload();
+    });
+
+    this.#baseConfigWatcher.on("error", (error) => {
+      void this.#emitError({
+        reason: "filesystem_event",
+        currentSnapshot: this.#currentSnapshot,
+        error,
+      });
+    });
   }
 
   async #emitError(result: {

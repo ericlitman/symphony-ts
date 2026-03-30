@@ -53,7 +53,7 @@ export function resolveWorkflowPath(workflowPath?: string): string {
 
 export async function loadWorkflowDefinition(
   workflowPath?: string,
-): Promise<WorkflowDefinition & { workflowPath: string }> {
+): Promise<WorkflowDefinition & { workflowPath: string; baseConfigPath?: string }> {
   const resolvedWorkflowPath = resolveWorkflowPath(workflowPath);
 
   let content: string;
@@ -135,6 +135,7 @@ export async function loadWorkflowDefinition(
       config: mergedConfig,
       promptTemplate: mergedBody,
       workflowPath: resolvedWorkflowPath,
+      baseConfigPath,
     };
   }
 
