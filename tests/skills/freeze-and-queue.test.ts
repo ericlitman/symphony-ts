@@ -124,7 +124,6 @@ Scenario: Widget works
 
   it("places Design between Task Scope and Scenarios in body", () => {
     const output = runDryRun(specWithDesign);
-    // Extract the sub-issue body section only
     const bodyStart = output.indexOf("Body:");
     const body = output.slice(bodyStart);
     const taskScopeIdx = body.indexOf("## Task Scope");
@@ -174,7 +173,6 @@ Scenario: It works
 
   it("does not inject Design section or navigation signal", () => {
     const output = runDryRun(specNoDesign);
-    // Check the sub-issue body specifically
     const bodyStart = output.indexOf("Body:");
     const body = output.slice(bodyStart);
     expect(body).not.toContain("## Design");
@@ -223,7 +221,6 @@ Scenario: It works
     const output = runDryRun(specEmptyDesign);
     const bodyStart = output.indexOf("Body:");
     const bodySection = output.slice(bodyStart);
-    // Should not have the navigation signal (which is conditional on non-empty design)
     expect(bodySection).not.toContain("Implementation context:");
   });
 });
@@ -351,18 +348,12 @@ Scenario: Utils format works
     expect(secondBody).not.toContain("Scenario: Core initializes");
   });
 
-  it("includes Design section in both sub-issue bodies", () => {
+  it("includes Design and Boundaries in both sub-issue bodies", () => {
     const output = runDryRun(specMultiTask);
     const firstBody = output.split("SUB-ISSUE 1:")[1]?.split("SUB-ISSUE 2:")[0] ?? "";
     const secondBody = output.split("SUB-ISSUE 2:")[1] ?? "";
     expect(firstBody).toContain("## Design");
     expect(secondBody).toContain("## Design");
-  });
-
-  it("includes Boundaries in both sub-issue bodies", () => {
-    const output = runDryRun(specMultiTask);
-    const firstBody = output.split("SUB-ISSUE 1:")[1]?.split("SUB-ISSUE 2:")[0] ?? "";
-    const secondBody = output.split("SUB-ISSUE 2:")[1] ?? "";
     expect(firstBody).toContain("## Boundaries");
     expect(secondBody).toContain("## Boundaries");
   });

@@ -1032,10 +1032,13 @@ if [[ -n "$PARENT_ID" ]]; then
     --variable "parentId=$PARENT_ID" \
     'query($parentId: String!) { issue(id: $parentId) { children(first: 100) { nodes { id title identifier } } } }') || true
   if [[ -n "$EXISTING_CHILDREN_JSON" ]]; then
+    child_count=0
     while IFS= read -r child_title; do
-      [[ -n "$child_title" ]] && EXISTING_CHILDREN+="$child_title"$'\n'
+      if [[ -n "$child_title" ]]; then
+        EXISTING_CHILDREN+="$child_title"$'\n'
+        ((child_count++))
+      fi
     done < <(echo "$EXISTING_CHILDREN_JSON" | jq -r '.data.issue.children.nodes[].title // empty' 2>/dev/null)
-    child_count=$(echo "$EXISTING_CHILDREN_JSON" | jq -r '.data.issue.children.nodes | length' 2>/dev/null || echo "0")
     if [[ "$child_count" -gt 0 ]]; then
       echo "Found $child_count existing children — will skip duplicates"
     fi
