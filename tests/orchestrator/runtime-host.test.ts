@@ -2162,8 +2162,7 @@ describe("pruneLocalBranches", () => {
   });
 
   it("does not log prune events when SYMPHONY_SKIP_BRANCH_PRUNE is set", async () => {
-    const originalEnv = process.env.SYMPHONY_SKIP_BRANCH_PRUNE;
-    process.env.SYMPHONY_SKIP_BRANCH_PRUNE = "1";
+    vi.stubEnv("SYMPHONY_SKIP_BRANCH_PRUNE", "1");
 
     try {
       const tracker = createTracker();
@@ -2201,13 +2200,12 @@ describe("pruneLocalBranches", () => {
       );
       expect(pruneEvents).toHaveLength(0);
     } finally {
-      process.env.SYMPHONY_SKIP_BRANCH_PRUNE = originalEnv;
+      vi.unstubAllEnvs();
     }
   });
 
   it("logs branch_prune_triggered on workspace cleanup", async () => {
-    const originalEnv = process.env.SYMPHONY_SKIP_BRANCH_PRUNE;
-    process.env.SYMPHONY_SKIP_BRANCH_PRUNE = undefined;
+    vi.stubEnv("SYMPHONY_SKIP_BRANCH_PRUNE", "");
 
     try {
       const tracker = createTracker();
@@ -2246,13 +2244,12 @@ describe("pruneLocalBranches", () => {
       // log event should still be emitted before the spawn attempt.
       expect(pruneEvents.length).toBeGreaterThanOrEqual(1);
     } finally {
-      process.env.SYMPHONY_SKIP_BRANCH_PRUNE = originalEnv;
+      vi.unstubAllEnvs();
     }
   });
 
   it("debounces rapid successive prune invocations", async () => {
-    const originalEnv = process.env.SYMPHONY_SKIP_BRANCH_PRUNE;
-    process.env.SYMPHONY_SKIP_BRANCH_PRUNE = undefined;
+    vi.stubEnv("SYMPHONY_SKIP_BRANCH_PRUNE", "");
 
     try {
       const tracker = createTracker({
@@ -2303,7 +2300,7 @@ describe("pruneLocalBranches", () => {
       expect(triggered.length).toBeGreaterThanOrEqual(1);
       expect(debounced.length).toBeGreaterThanOrEqual(1);
     } finally {
-      process.env.SYMPHONY_SKIP_BRANCH_PRUNE = originalEnv;
+      vi.unstubAllEnvs();
     }
   });
 });

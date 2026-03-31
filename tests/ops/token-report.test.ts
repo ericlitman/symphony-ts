@@ -21,7 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, "../../ops/token-report.mjs");
@@ -1590,6 +1590,7 @@ describe("token-report.mjs slack", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(symphonyHome, { recursive: true, force: true });
   });
 
@@ -1599,8 +1600,8 @@ describe("token-report.mjs slack", () => {
     writeConfigHistory(symphonyHome, [makeConfigSnapshot()]);
 
     const env: Record<string, string> = {};
-    // Explicitly unset SLACK_BOT_TOKEN
-    process.env.SLACK_BOT_TOKEN = undefined;
+    // Explicitly unset SLACK_BOT_TOKEN (thread-safe via vi.stubEnv)
+    vi.stubEnv("SLACK_BOT_TOKEN", "");
     const { exitCode, stderr } = runSlack(symphonyHome, env);
 
     expect(exitCode).toBe(0);
