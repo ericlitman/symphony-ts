@@ -4,21 +4,25 @@
  * Each test spawns the bash script as a subprocess with a shimmed PATH
  * pointing to fake `security` and `curl` binaries in a temp directory.
  * Each test gets its own HOME for sequence.json and cache isolation.
+ *
+ * Uses async spawn (not spawnSync) to avoid blocking the vitest worker
+ * event loop — spawnSync prevents the worker from answering IPC
+ * heartbeats, causing "Timeout calling onTaskUpdate" failures under load.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
-  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = join(__dirname, "../../ops/claude-usage");
@@ -73,11 +77,7 @@ function writeShim(dir: string, name: string, script: string) {
   chmodSync(path, 0o755);
 }
 
-function writeFakeSecurityShim(
-  shimDir: string,
-  output: string,
-  exitCode = 0,
-) {
+function writeFakeSecurityShim(shimDir: string, output: string, exitCode = 0) {
   if (exitCode === 0) {
     const responseFile = join(shimDir, "security_response.json");
     writeFileSync(responseFile, output);
@@ -104,33 +104,46 @@ function writeSequenceJson(homeDir: string, data: object) {
   writeFileSync(join(dir, "sequence.json"), JSON.stringify(data));
 }
 
+const CLI_TIMEOUT_MS = 20_000;
+const TEST_TIMEOUT_MS = 30_000;
+
 function runCLI(
   ctx: TestContext,
   args: string[] = [],
   extraEnv: Record<string, string> = {},
-) {
-  const env: Record<string, string> = {
-    HOME: ctx.homeDir,
-    PATH: `${ctx.shimDir}:/usr/bin:/bin:/usr/local/bin`,
-    ...extraEnv,
-  };
-  // Remove undefined values
-  for (const key of Object.keys(env)) {
-    if (env[key] === undefined) delete env[key];
-  }
-  const result = spawnSync("bash", [SCRIPT_PATH, ...args], {
-    env,
-    timeout: 30_000,
-    encoding: "utf-8",
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    const child = spawn("bash", [SCRIPT_PATH, ...args], {
+      env: {
+        HOME: ctx.homeDir,
+        PATH: `${ctx.shimDir}:/usr/bin:/bin:/usr/local/bin`,
+        ...extraEnv,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, CLI_TIMEOUT_MS);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr: stderr + err.message, exitCode: 1 });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
   });
-  return {
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    exitCode: result.status ?? 1,
-  };
 }
 
-describe("ops/claude-usage", { timeout: 30_000 }, () => {
+describe("ops/claude-usage", { timeout: TEST_TIMEOUT_MS }, () => {
   let ctx: TestContext;
 
   beforeEach(() => {
@@ -138,12 +151,12 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("outputs valid JSON", () => {
-    it("outputs valid JSON with five_hour and seven_day utilization fields", () => {
+    it("outputs valid JSON with five_hour and seven_day utilization fields", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).toBe(0);
 
       const output = JSON.parse(result.stdout);
@@ -155,12 +168,12 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("active_account fields", () => {
-    it("active_account contains email and org fields", () => {
+    it("active_account contains email and org fields", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).toBe(0);
 
       const output = JSON.parse(result.stdout);
@@ -174,12 +187,12 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("lists accounts", () => {
-    it("accounts array lists all managed accounts", () => {
+    it("accounts array lists all managed accounts", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).toBe(0);
 
       const output = JSON.parse(result.stdout);
@@ -192,12 +205,12 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("writes cache", () => {
-    it("writes utilization to per-account cache file", () => {
+    it("writes utilization to per-account cache file", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).toBe(0);
 
       const cachePath = join(ctx.homeDir, ".symphony", "usage-cache.json");
@@ -212,12 +225,12 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("human-readable", () => {
-    it("outputs human-readable summary by default", () => {
+    it("outputs human-readable summary by default", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx);
+      const result = await runCLI(ctx);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("eric@mobilyze.com");
       expect(result.stdout).toContain("3.0%");
@@ -226,62 +239,62 @@ describe("ops/claude-usage", { timeout: 30_000 }, () => {
   });
 
   describe("exits non-zero", () => {
-    it("exits non-zero when Keychain credentials are unavailable", () => {
+    it("exits non-zero when Keychain credentials are unavailable", async () => {
       writeFakeSecurityShim(ctx.shimDir, "", 36);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("Error");
     });
 
-    it("exits non-zero when security returns empty output", () => {
+    it("exits non-zero when security returns empty output", async () => {
       writeFakeSecurityShim(ctx.shimDir, "");
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("Error");
     });
   });
 
   describe("validates response", () => {
-    it("fails gracefully on unexpected API format", () => {
+    it("fails gracefully on unexpected API format", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
-      writeFakeCurlShim(
-        ctx.shimDir,
-        JSON.stringify({ unexpected: "format" }),
-      );
+      writeFakeCurlShim(ctx.shimDir, JSON.stringify({ unexpected: "format" }));
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("Unexpected API response format");
     });
 
-    it("fails when five_hour is missing", () => {
+    it("fails when five_hour is missing", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(
         ctx.shimDir,
         JSON.stringify({
-          seven_day: { utilization: 10.0, resets_at: "2026-04-01T00:00:00+00:00" },
+          seven_day: {
+            utilization: 10.0,
+            resets_at: "2026-04-01T00:00:00+00:00",
+          },
         }),
       );
       writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("five_hour");
     });
   });
 
   describe("missing sequence", () => {
-    it("handles missing sequence.json gracefully", () => {
+    it("handles missing sequence.json gracefully", async () => {
       writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
       writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
       // Do NOT write sequence.json
 
-      const result = runCLI(ctx, ["--json"]);
+      const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).toBe(0);
 
       const output = JSON.parse(result.stdout);
