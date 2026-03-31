@@ -120,12 +120,12 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
           // readdirSync may fail if workspace is not yet fully initialized
         }
 
-        // Also monitor the Claude Code conversation directory for activity
-        // during test execution and other operations that don't modify workspace
-        // files. The CC conversation .jsonl file changes on every tool call and
+        // Monitor the CC conversation directory for activity during test
+        // execution and other operations that don't modify workspace files.
+        // The CC conversation .jsonl file changes on every tool call and
         // response — the most reliable signal of agent activity.
-        // NOTE: Couples to CC project directory naming convention (undocumented).
-        // Degrades gracefully if the convention changes (catch block below).
+        // Couples to CC project directory naming convention (undocumented);
+        // degrades gracefully if the convention changes (catch blocks).
         const ccProjectKey = workspacePath
           .replace(/^\//, "-")
           .replace(/\//g, "-");
@@ -135,7 +135,19 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
           "projects",
           ccProjectKey,
         );
+        // Snapshot the newest CC conversation mtime so pre-existing files
+        // from previous sessions don't trigger a false heartbeat on tick 1.
         let lastCcConvMtimeMs = 0;
+        try {
+          for (const f of readdirSync(ccProjectDir)) {
+            if (f.endsWith(".jsonl")) {
+              const mtime = getMtimeMs(join(ccProjectDir, f));
+              if (mtime > lastCcConvMtimeMs) lastCcConvMtimeMs = mtime;
+            }
+          }
+        } catch {
+          // CC project dir may not exist yet
+        }
 
         heartbeatTimer = setInterval(() => {
           const changedPaths: string[] = [];

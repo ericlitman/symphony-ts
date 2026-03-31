@@ -603,6 +603,59 @@ describe("ClaudeCodeRunner heartbeat", () => {
     await turnPromise;
   });
 
+  it("does not emit false heartbeat for pre-existing CC conversation files", async () => {
+    // Pre-existing CC conversation file from a previous session has mtime > 0.
+    // The initial snapshot should capture this, so tick 1 must NOT fire.
+    mtimeByPath["/mock-home/.claude/projects/-tmp-workspace/session-1.jsonl"] =
+      500;
+
+    let resolveFn: (value: unknown) => void;
+    mockGenerateText.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFn = resolve;
+      }) as never,
+    );
+
+    const events: CodexClientEvent[] = [];
+    const runner = new ClaudeCodeRunner({
+      cwd: "/tmp/workspace",
+      model: "sonnet",
+      onEvent: (event) => events.push(event),
+      heartbeatIntervalMs: 5000,
+    });
+
+    const turnPromise = runner.startSession({
+      prompt: "run tests",
+      title: "test",
+    });
+
+    // First tick — pre-existing file should be snapshotted, no false heartbeat
+    vi.advanceTimersByTime(5000);
+    expect(events.filter((e) => e.event === "activity_heartbeat")).toHaveLength(
+      0,
+    );
+
+    // Second tick — still no change
+    vi.advanceTimersByTime(5000);
+    expect(events.filter((e) => e.event === "activity_heartbeat")).toHaveLength(
+      0,
+    );
+
+    // Now the file actually changes — heartbeat should fire
+    mtimeByPath["/mock-home/.claude/projects/-tmp-workspace/session-1.jsonl"] =
+      2000;
+    vi.advanceTimersByTime(5000);
+    expect(events.filter((e) => e.event === "activity_heartbeat")).toHaveLength(
+      1,
+    );
+
+    resolveFn!({
+      text: "done",
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    await turnPromise;
+  });
+
   it("does not emit heartbeat when neither mtime changes", async () => {
     let resolveFn: (value: unknown) => void;
     mockGenerateText.mockReturnValueOnce(
