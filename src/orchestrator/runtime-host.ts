@@ -647,13 +647,17 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
     // On stall_timeout, the CC subprocess is killed but its children are not — they
     // keep running in the workspace directory, accumulating across retry attempts.
     if (input.outcome === "abnormal") {
-      const workspacePath = this.workspaceManager.resolveForIssue(
-        execution.issueId,
-      ).workspacePath;
-      await this.killOrphanedProcesses(
-        workspacePath,
-        execution.issueIdentifier,
-      );
+      try {
+        const workspacePath = this.workspaceManager.resolveForIssue(
+          execution.issueId,
+        ).workspacePath;
+        await this.killOrphanedProcesses(
+          workspacePath,
+          execution.issueIdentifier,
+        );
+      } catch {
+        // Workspace may already be cleaned up — don't block finalization
+      }
     }
 
     await this.logger?.log(
@@ -807,7 +811,10 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
             .filter((line) => line.includes(workspacePath))
             .map((line) => line.trim().split(/\s+/)[1])
             .filter(
-              (pid): pid is string => pid !== undefined && /^\d+$/.test(pid),
+              (pid): pid is string =>
+                pid !== undefined &&
+                /^\d+$/.test(pid) &&
+                Number(pid) !== process.pid,
             ),
         ),
       ];
