@@ -186,6 +186,7 @@ function createIssueDetail(): IssueDetailResponse {
     recent_events: [],
     last_error: null,
     tracked: {},
+    parent: null,
   };
 }
 
