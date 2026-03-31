@@ -15,6 +15,10 @@ vi.mock("ai-sdk-provider-claude-code", () => ({
   claudeCode: vi.fn(() => "mock-claude-model"),
 }));
 
+vi.mock("node:os", () => ({
+  homedir: vi.fn(() => "/mock-home"),
+}));
+
 // Mock node:fs for heartbeat tests
 vi.mock("node:fs", () => ({
   statSync: vi.fn(() => ({ mtimeMs: 1000 })),
@@ -380,12 +384,20 @@ describe("ClaudeCodeRunner heartbeat", () => {
       const key = String(p);
       return { mtimeMs: mtimeByPath[key] ?? 0 } as never;
     });
-    mockReaddirSync.mockReturnValue([
-      { name: "ops", isDirectory: () => true } as never,
-      { name: "src", isDirectory: () => true } as never,
-      { name: "node_modules", isDirectory: () => true } as never,
-      { name: "README.md", isDirectory: () => false } as never,
-    ]);
+    mockReaddirSync.mockImplementation((p: unknown) => {
+      const path = String(p);
+      if (path.includes(".claude/projects")) {
+        // CC conversation directory — return a conversation file
+        return ["session-1.jsonl"] as never;
+      }
+      // Workspace directory — return subdirs
+      return [
+        { name: "ops", isDirectory: () => true },
+        { name: "src", isDirectory: () => true },
+        { name: "node_modules", isDirectory: () => true },
+        { name: "README.md", isDirectory: () => false },
+      ] as never;
+    });
   });
 
   afterEach(() => {
@@ -540,6 +552,49 @@ describe("ClaudeCodeRunner heartbeat", () => {
     vi.advanceTimersByTime(5000);
     const heartbeats = events.filter((e) => e.event === "activity_heartbeat");
     expect(heartbeats).toHaveLength(1);
+
+    resolveFn!({
+      text: "done",
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    await turnPromise;
+  });
+
+  it("emits heartbeat when CC conversation file changes (test execution activity)", async () => {
+    let resolveFn: (value: unknown) => void;
+    mockGenerateText.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFn = resolve;
+      }) as never,
+    );
+
+    const events: CodexClientEvent[] = [];
+    const runner = new ClaudeCodeRunner({
+      cwd: "/tmp/workspace",
+      model: "sonnet",
+      onEvent: (event) => events.push(event),
+      heartbeatIntervalMs: 5000,
+    });
+
+    const turnPromise = runner.startSession({
+      prompt: "run tests",
+      title: "test",
+    });
+
+    // Initial poll — no change
+    vi.advanceTimersByTime(5000);
+    expect(events.filter((e) => e.event === "activity_heartbeat")).toHaveLength(
+      0,
+    );
+
+    // CC conversation file changes (agent completed a tool call during test run)
+    // but NO workspace files changed
+    mtimeByPath["/mock-home/.claude/projects/-tmp-workspace/session-1.jsonl"] =
+      2000;
+    vi.advanceTimersByTime(5000);
+    const heartbeats = events.filter((e) => e.event === "activity_heartbeat");
+    expect(heartbeats).toHaveLength(1);
+    expect(heartbeats[0]!.message).toContain("cc-conversation");
 
     resolveFn!({
       text: "done",

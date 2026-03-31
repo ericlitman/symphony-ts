@@ -1,4 +1,5 @@
 import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { generateText } from "ai";
 import { claudeCode } from "ai-sdk-provider-claude-code";
@@ -119,6 +120,23 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
           // readdirSync may fail if workspace is not yet fully initialized
         }
 
+        // Also monitor the Claude Code conversation directory for activity
+        // during test execution and other operations that don't modify workspace
+        // files. The CC conversation .jsonl file changes on every tool call and
+        // response — the most reliable signal of agent activity.
+        // NOTE: Couples to CC project directory naming convention (undocumented).
+        // Degrades gracefully if the convention changes (catch block below).
+        const ccProjectKey = workspacePath
+          .replace(/^\//, "-")
+          .replace(/\//g, "-");
+        const ccProjectDir = join(
+          homedir(),
+          ".claude",
+          "projects",
+          ccProjectKey,
+        );
+        let lastCcConvMtimeMs = 0;
+
         heartbeatTimer = setInterval(() => {
           const changedPaths: string[] = [];
           for (const [path, lastMtime] of mtimeMap) {
@@ -128,6 +146,22 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
               changedPaths.push(path);
             }
           }
+
+          // Check CC conversation files for activity invisible to workspace monitoring
+          try {
+            for (const f of readdirSync(ccProjectDir)) {
+              if (f.endsWith(".jsonl")) {
+                const mtime = getMtimeMs(join(ccProjectDir, f));
+                if (mtime > lastCcConvMtimeMs) {
+                  lastCcConvMtimeMs = mtime;
+                  changedPaths.push("cc-conversation");
+                }
+              }
+            }
+          } catch {
+            // CC project dir may not exist yet or naming convention changed
+          }
+
           if (changedPaths.length > 0) {
             this.emit({
               event: "activity_heartbeat",
