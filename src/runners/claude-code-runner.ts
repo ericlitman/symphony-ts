@@ -120,21 +120,21 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
         }
 
         heartbeatTimer = setInterval(() => {
-          let changed = false;
+          const changedPaths: string[] = [];
           for (const [path, lastMtime] of mtimeMap) {
             const current = getMtimeMs(path);
             if (current !== lastMtime) {
               mtimeMap.set(path, current);
-              changed = true;
+              changedPaths.push(path);
             }
           }
-          if (changed) {
+          if (changedPaths.length > 0) {
             this.emit({
               event: "activity_heartbeat",
               sessionId: fullSessionId,
               threadId,
               turnId,
-              message: "workspace file change detected",
+              message: `workspace file change detected (${changedPaths.map((p) => p.replace(workspacePath, ".")).join(", ")})`,
             });
           }
         }, heartbeatMs);
