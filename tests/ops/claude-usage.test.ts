@@ -222,6 +222,40 @@ describe("ops/claude-usage", { timeout: TEST_TIMEOUT_MS }, () => {
       expect(cache["2"].seven_day).toBe(48.0);
       expect(cache["2"].timestamp).toBeDefined();
     });
+
+    it("preserves existing cache entries for other accounts", async () => {
+      writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
+      writeFakeCurlShim(ctx.shimDir, SAMPLE_API_RESPONSE);
+      writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
+
+      // Pre-populate cache with account 1 data
+      const cacheDir = join(ctx.homeDir, ".symphony");
+      const cachePath = join(cacheDir, "usage-cache.json");
+      mkdirSync(cacheDir, { recursive: true });
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          "1": {
+            five_hour: 10.0,
+            seven_day: 20.0,
+            timestamp: "2026-01-01T00:00:00Z",
+          },
+        }),
+      );
+
+      const result = await runCLI(ctx, ["--json"]);
+      expect(result.exitCode).toBe(0);
+
+      const cache = JSON.parse(readFileSync(cachePath, "utf-8"));
+      // Account 1 data should be preserved
+      expect(cache["1"]).toBeDefined();
+      expect(cache["1"].five_hour).toBe(10.0);
+      expect(cache["1"].seven_day).toBe(20.0);
+      // Account 2 data should be added
+      expect(cache["2"]).toBeDefined();
+      expect(cache["2"].five_hour).toBe(3.0);
+      expect(cache["2"].seven_day).toBe(48.0);
+    });
   });
 
   describe("human-readable", () => {
@@ -246,6 +280,16 @@ describe("ops/claude-usage", { timeout: TEST_TIMEOUT_MS }, () => {
       const result = await runCLI(ctx, ["--json"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("Error");
+    });
+
+    it("exits non-zero when curl fails with non-zero exit code", async () => {
+      writeFakeSecurityShim(ctx.shimDir, SAMPLE_KEYCHAIN_JSON);
+      writeFakeCurlShim(ctx.shimDir, "", 22);
+      writeSequenceJson(ctx.homeDir, SAMPLE_SEQUENCE);
+
+      const result = await runCLI(ctx, ["--json"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("Failed to fetch usage data");
     });
 
     it("exits non-zero when security returns empty output", async () => {
