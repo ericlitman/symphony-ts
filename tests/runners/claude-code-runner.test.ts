@@ -424,7 +424,7 @@ describe("ClaudeCodeRunner heartbeat", () => {
     vi.advanceTimersByTime(5000);
     const heartbeats = events.filter((e) => e.event === "activity_heartbeat");
     expect(heartbeats).toHaveLength(1);
-    expect(heartbeats[0]!.message).toBe("workspace file change detected");
+    expect(heartbeats[0]!.message).toContain("./.git/index");
 
     // Resolve the turn
     resolveFn!({
@@ -466,7 +466,7 @@ describe("ClaudeCodeRunner heartbeat", () => {
     vi.advanceTimersByTime(5000);
     const heartbeats = events.filter((e) => e.event === "activity_heartbeat");
     expect(heartbeats).toHaveLength(1);
-    expect(heartbeats[0]!.message).toBe("workspace file change detected");
+    expect(heartbeats[0]!.message).toContain("workspace file change detected");
 
     resolveFn!({
       text: "done",
@@ -499,7 +499,7 @@ describe("ClaudeCodeRunner heartbeat", () => {
     vi.advanceTimersByTime(5000);
     const heartbeats = events.filter((e) => e.event === "activity_heartbeat");
     expect(heartbeats).toHaveLength(1);
-    expect(heartbeats[0]!.message).toBe("workspace file change detected");
+    expect(heartbeats[0]!.message).toContain("./.git/index");
 
     resolveFn!({
       text: "done",
