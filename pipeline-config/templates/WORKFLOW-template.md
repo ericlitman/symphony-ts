@@ -438,10 +438,20 @@ You are in the IMPLEMENT stage. Read INVESTIGATION-BRIEF.md first if it exists i
 ### If `REBASE-BRIEF.md` exists in the worktree root — this is a REBASE REWORK:
 1. Read `REBASE-BRIEF.md` for context on conflicting files and recent main commits
 2. Rebase the current branch onto `origin/main` and resolve all merge conflicts
-3. Run all `# Verify:` commands from the spec to ensure the build still passes
-4. Delete `REBASE-BRIEF.md` after successful rebase and verification
-5. Do NOT modify code beyond what is necessary to resolve conflicts
-6. If conflicts cannot be resolved cleanly, output `[STAGE_FAILED: verify]` with details
+3. Run `pnpm format --write` to auto-format, then run `pnpm lint` to verify no lint errors remain. Fix any lint errors before proceeding.
+4. Run all `# Verify:` commands from the spec to ensure the build still passes
+5. Delete `REBASE-BRIEF.md` after successful rebase and verification
+6. Do NOT modify code beyond what is necessary to resolve conflicts and pass lint/verify
+7. If conflicts cannot be resolved cleanly, output `[STAGE_FAILED: verify]` with details
+
+### Else if `CI-FAILURE-BRIEF.md` exists in the worktree root — this is a CI FAILURE REWORK:
+The merge queue CI rejected the PR. The brief contains the failing check name and error output.
+1. Read `CI-FAILURE-BRIEF.md` for the specific CI failure details
+2. Run the full CI suite locally to reproduce: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`
+3. Fix whatever is failing. For lint errors, run `pnpm format --write` first, then fix any remaining `pnpm lint` errors manually.
+4. Run all `# Verify:` commands from the spec to ensure nothing else regressed
+5. Delete `CI-FAILURE-BRIEF.md` after all checks pass
+6. If the failure cannot be resolved, output `[STAGE_FAILED: verify]` with details
 
 ### Else if `## Review Findings` comments exist — this is a REVIEW REWORK:
 Read ALL comments on this Linear issue starting with `## Review Findings`. These contain the specific findings you must fix.
@@ -458,14 +468,16 @@ Read ALL comments on this Linear issue starting with `## Review Findings`. These
 3. Implement the task per the issue description.
 4. Write tests as needed.
 5. Run all `# Verify:` commands from the spec. You are not done until every verify command exits 0.
-6. Before creating the PR, capture structured tool output:
+6. Run `pnpm format --write` to auto-format code, then run `pnpm lint` to verify no lint errors remain. If lint fails, fix the errors and re-run until clean. This must pass before creating the PR.
+7. Before creating the PR, capture structured tool output:
    - Run `npx tsc --noEmit 2>&1` and include output in PR body under `## Tool Output > TypeScript`
+   - Run `pnpm lint 2>&1` and include output in PR body under `## Tool Output > Lint`
    - Run `npm test 2>&1` and include summary in PR body under `## Tool Output > Tests`
    - Run `semgrep scan --config auto --json 2>&1` (if available) and include raw output in PR body under `## SAST Output`
    - Do NOT filter or interpret SAST results — include them verbatim.
-7. Commit your changes with message format: `feat({{ issue.identifier }}): <description>`.
-8. Open a PR targeting this repo (not its upstream fork parent) via `gh pr create --repo $(git remote get-url origin | sed "s|.*github.com/||;s|\.git$||")` with the issue description in the PR body. Include the Tool Output and SAST Output sections.
-9. Link the PR to the Linear issue by including `{{ issue.identifier }}` in the PR title or body.
+8. Commit your changes with message format: `feat({{ issue.identifier }}): <description>`.
+9. Open a PR targeting this repo (not its upstream fork parent) via `gh pr create --repo $(git remote get-url origin | sed "s|.*github.com/||;s|\.git$||")` with the issue description in the PR body. Include the Tool Output and SAST Output sections.
+10. Link the PR to the Linear issue by including `{{ issue.identifier }}` in the PR title or body.
 
 ### Workpad (implement)
 Update the workpad comment at these milestones during implementation.
@@ -548,7 +560,22 @@ gh pr view --json state --jq '.state'
 ```
 Expected: `MERGED`. If the state is `MERGED`, proceed to workpad update.
 
-If the merge queue rejects the PR (check failures on rebased code), run `gh pr view --json state,statusCheckRollup` to understand the failure, then output `[STAGE_FAILED: rebase]` — the queue failure means the code doesn't work after rebase against latest main.
+If the merge queue rejects the PR (check failures on rebased code):
+1. Run `gh pr view --json state,statusCheckRollup` to identify which check failed and why
+2. Write `CI-FAILURE-BRIEF.md` to the worktree root with the following structure:
+   ```markdown
+   # CI Failure Brief
+   ## Issue: {{ issue.identifier }} — {{ issue.title }}
+
+   ## Failed Check
+   - Check name: (e.g., "Lint", "Typecheck", "Test")
+   - Error output: (paste the relevant error output from the check run)
+
+   ## What to Fix
+   - (brief description of what needs to change, e.g., "Biome formatting errors in src/foo.ts lines 100-105")
+   ```
+3. To get detailed error output, run `gh run view <run-id> --log-failed` using the run ID from the statusCheckRollup
+4. Output `[STAGE_FAILED: rebase]` as the very last line of your final message
 
 ### Step 2b: If Conflicts — Write Rebase Brief and Signal Failure
 If the PR has merge conflicts (mergeable is "CONFLICTING" or mergeStateStatus indicates conflicts):
