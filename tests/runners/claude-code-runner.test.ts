@@ -79,6 +79,8 @@ describe("ClaudeCodeRunner", () => {
       cwd: "/tmp/workspace",
       permissionMode: "bypassPermissions",
       env: { SYMPHONY_PIPELINE: "1" },
+      settingSources: ["user", "project"],
+      maxBudgetUsd: 50,
     });
     expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -293,6 +295,8 @@ describe("ClaudeCodeRunner", () => {
       cwd: "/tmp/workspace",
       permissionMode: "bypassPermissions",
       env: { SYMPHONY_PIPELINE: "1" },
+      settingSources: ["user", "project"],
+      maxBudgetUsd: 50,
     });
   });
 
