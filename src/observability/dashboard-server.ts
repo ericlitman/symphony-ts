@@ -393,9 +393,8 @@ export function createDashboardRequestHandler(
         try {
           await execCommand("cswap", ["--switch"]);
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
           writeJsonError(response, 500, ERROR_CODES.switchFailed, {
-            message: `Account switch failed: ${reason}`,
+            message: `Account switch failed: ${toErrorMessage(error)}`,
           });
           return;
         }
@@ -413,11 +412,10 @@ export function createDashboardRequestHandler(
           usageData = JSON.parse(stdout);
         } catch (error) {
           // Switch succeeded but usage fetch failed — return success with warning
-          const reason = error instanceof Error ? error.message : String(error);
           writeJson(response, 200, {
             switched: true,
             usage: null,
-            warning: `Switch succeeded but usage fetch failed: ${reason}`,
+            warning: `Switch succeeded but usage fetch failed: ${toErrorMessage(error)}`,
           });
           return;
         }
