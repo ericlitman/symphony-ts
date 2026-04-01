@@ -1,18 +1,38 @@
 import { type IncomingMessage, request as httpRequest } from "node:http";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeSnapshot } from "../../src/logging/runtime-snapshot.js";
+import type {
+  DashboardServerHost,
+  ExecCommandFn,
+  IssueDetailResponse,
+  RefreshResponse,
+} from "../../src/observability/dashboard-server.js";
+
+// Mock the claude-usage CLI helper so GET /api/v1/claude/usage works in tests
+const { mockFetchClaudeUsage } = vi.hoisted(() => ({
+  mockFetchClaudeUsage: vi.fn(),
+}));
+vi.mock("../../src/observability/dashboard-claude-usage.js", () => ({
+  fetchClaudeUsageFromCli: mockFetchClaudeUsage,
+}));
+
 import {
-  type DashboardServerHost,
-  type ExecCommandFn,
-  type IssueDetailResponse,
-  type RefreshResponse,
+  clearClaudeUsageCache,
   startDashboardServer,
 } from "../../src/observability/dashboard-server.js";
 
 describe("POST /api/v1/claude/switch", () => {
   const servers: Array<{ close: () => Promise<void> }> = [];
+
+  beforeEach(() => {
+    clearClaudeUsageCache();
+    mockFetchClaudeUsage.mockReset();
+    mockFetchClaudeUsage.mockResolvedValue({
+      active_account: "default@example.com",
+    });
+  });
 
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
@@ -96,19 +116,22 @@ describe("POST /api/v1/claude/switch", () => {
 
   it("clears cache so next usage fetch is fresh", async () => {
     const execCommand = vi.fn<ExecCommandFn>();
-    let callCount = 0;
     execCommand.mockImplementation(async (cmd: string) => {
       if (cmd === "cswap") {
         return { stdout: "", stderr: "" };
       }
       if (cmd === "ops/claude-usage") {
-        callCount++;
         return {
-          stdout: JSON.stringify({ account: `user${callCount}@example.com` }),
+          stdout: JSON.stringify({ account: "switched@example.com" }),
           stderr: "",
         };
       }
       return { stdout: "", stderr: "" };
+    });
+
+    // Track calls to fetchClaudeUsageFromCli (used by GET /api/v1/claude/usage)
+    mockFetchClaudeUsage.mockResolvedValue({
+      active_account: "original@example.com",
     });
 
     const server = await startDashboardServer({
@@ -120,35 +143,27 @@ describe("POST /api/v1/claude/switch", () => {
     });
     servers.push(server);
 
-    // First: fetch usage to populate cache
+    // First: fetch usage to populate claudeUsageCache
     await sendRequest(server.port, {
       method: "GET",
       path: "/api/v1/claude/usage",
     });
-    const usageCallsBeforeSwitch = execCommand.mock.calls.filter(
-      (c) => c[0] === "ops/claude-usage",
-    ).length;
+    expect(mockFetchClaudeUsage).toHaveBeenCalledTimes(1);
 
-    // Second: switch (clears cache, also fetches usage)
+    // Second: switch (clears claudeUsageCache)
     await sendRequest(server.port, {
       method: "POST",
       path: "/api/v1/claude/switch",
     });
 
-    // Third: fetch usage again — should call ops/claude-usage again (not cached from pre-switch)
-    const res = await sendRequest(server.port, {
+    // Third: fetch usage again — should call fetchClaudeUsageFromCli again since cache was cleared
+    await sendRequest(server.port, {
       method: "GET",
       path: "/api/v1/claude/usage",
     });
 
-    // The usage endpoint should have been called at least once more after the switch's own call
-    const totalUsageCalls = execCommand.mock.calls.filter(
-      (c) => c[0] === "ops/claude-usage",
-    ).length;
-    // Before switch: 1 call. Switch itself calls it once (=2). After switch usage GET: cache from switch is valid so no extra call.
-    // But the key point: the switch DID call ops/claude-usage (clearing old cache), so the data is fresh.
-    expect(totalUsageCalls).toBeGreaterThanOrEqual(usageCallsBeforeSwitch + 1);
-    expect(res.statusCode).toBe(200);
+    // fetchClaudeUsageFromCli should have been called twice (once before switch, once after)
+    expect(mockFetchClaudeUsage).toHaveBeenCalledTimes(2);
   });
 
   it("refuses when agents are running and returns 409", async () => {
