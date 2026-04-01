@@ -365,13 +365,18 @@ export function createDashboardRequestHandler(
             });
           }
           const parsed = await claudeUsageInflight;
-          claudeUsageCache = { data: parsed, expiresAt: Date.now() + CLAUDE_USAGE_CACHE_TTL_MS };
+          claudeUsageCache = {
+            data: parsed,
+            expiresAt: Date.now() + CLAUDE_USAGE_CACHE_TTL_MS,
+          };
           writeJson(response, 200, { ...parsed, cached: false });
         } catch (err) {
           writeJson(response, 200, {
             available: false,
             error:
-              err instanceof Error ? err.message : "Unknown error running ops/claude-usage",
+              err instanceof Error
+                ? err.message
+                : "Unknown error running ops/claude-usage",
           });
         }
         return;
