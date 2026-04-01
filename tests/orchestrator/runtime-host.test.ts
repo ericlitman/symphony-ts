@@ -1228,8 +1228,12 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events).toHaveLength(2);
     expect(notifier.events[0]).toMatchObject({
+      type: "issue_dispatched",
+      issueIdentifier: "ISSUE-1",
+    });
+    expect(notifier.events[1]).toMatchObject({
       type: "issue_completed",
       issueIdentifier: "ISSUE-1",
       issueTitle: "Issue 1",
@@ -1298,8 +1302,8 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
-    const event = notifier.events[0]!;
+    expect(notifier.events).toHaveLength(2);
+    const event = notifier.events[1]!;
     expect(event.type).toBe("issue_completed");
     // The history must contain the final stage record — not be empty
     const completed = event as Extract<
@@ -1394,8 +1398,9 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    // No completion notification yet — stage continuation
-    expect(notifier.events).toHaveLength(0);
+    // Only the initial dispatch notification — no completion yet (stage continuation)
+    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events[0]).toMatchObject({ type: "issue_dispatched" });
 
     // Stage 2: fire the continuation retry timer to dispatch "implement"
     const retryResult = await host.runRetryTimer("1");
@@ -1404,9 +1409,9 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    // Now we should see the terminal completion
-    expect(notifier.events).toHaveLength(1);
-    const event = notifier.events[0]!;
+    // Dispatch + terminal completion (no second dispatch — continuation, not rework)
+    expect(notifier.events).toHaveLength(2);
+    const event = notifier.events[1]!;
     expect(event.type).toBe("issue_completed");
     // History must include records from BOTH stages
     const completed = event as Extract<
@@ -1504,8 +1509,9 @@ describe("pipeline notifications", () => {
     await host.waitForIdle();
 
     // Stage advanced from investigate → implement, scheduled continuation retry.
-    // No notification should fire.
-    expect(notifier.events).toHaveLength(0);
+    // Only the initial dispatch notification — no terminal notification.
+    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events[0]).toMatchObject({ type: "issue_dispatched" });
   });
 
   it("fires issue_failed when retries are exhausted", async () => {
@@ -1530,8 +1536,12 @@ describe("pipeline notifications", () => {
     fakeRunner.reject("1", new Error("agent crashed"));
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events).toHaveLength(2);
     expect(notifier.events[0]).toMatchObject({
+      type: "issue_dispatched",
+      issueIdentifier: "ISSUE-1",
+    });
+    expect(notifier.events[1]).toMatchObject({
       type: "issue_failed",
       issueIdentifier: "ISSUE-1",
       retriesExhausted: true,
@@ -1678,6 +1688,156 @@ describe("pipeline notifications", () => {
 
     // If we got here without throwing, the test passes
     expect(host.notifier).toBeNull();
+  });
+
+  it("fires a second issue_dispatched on rework (reworkCount incrementing)", async () => {
+    const tracker = createTracker();
+    const fakeRunner = new FakeAgentRunner();
+    const notifier = createMockNotifier();
+    const host = new OrchestratorRuntimeHost({
+      config: createStagedConfig({
+        stages: {
+          initialStage: "investigate",
+          fastTrack: null,
+          stages: {
+            investigate: {
+              type: "agent",
+              runner: null,
+              model: null,
+              prompt: null,
+              maxTurns: null,
+              timeoutMs: null,
+              concurrency: null,
+              gateType: null,
+              maxRework: null,
+              reviewers: [],
+              transitions: {
+                onComplete: "implement",
+                onApprove: null,
+                onRework: null,
+              },
+              linearState: null,
+            },
+            implement: {
+              type: "agent",
+              runner: null,
+              model: null,
+              prompt: null,
+              maxTurns: null,
+              timeoutMs: null,
+              concurrency: null,
+              gateType: null,
+              maxRework: null,
+              reviewers: [],
+              transitions: {
+                onComplete: "review",
+                onApprove: null,
+                onRework: null,
+              },
+              linearState: null,
+            },
+            review: {
+              type: "agent",
+              runner: null,
+              model: null,
+              prompt: null,
+              maxTurns: null,
+              timeoutMs: null,
+              concurrency: null,
+              gateType: null,
+              maxRework: 3,
+              reviewers: [],
+              transitions: {
+                onComplete: "done",
+                onApprove: null,
+                onRework: "implement",
+              },
+              linearState: null,
+            },
+            done: {
+              type: "terminal",
+              runner: null,
+              model: null,
+              prompt: null,
+              maxTurns: null,
+              timeoutMs: null,
+              concurrency: null,
+              gateType: null,
+              maxRework: null,
+              reviewers: [],
+              transitions: {
+                onComplete: null,
+                onApprove: null,
+                onRework: null,
+              },
+              linearState: null,
+            },
+          },
+        },
+      }),
+      tracker,
+      notifier,
+      createAgentRunner: ({ onEvent }) => {
+        fakeRunner.onEvent = onEvent;
+        return fakeRunner;
+      },
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    // Stage 1: investigate → completes, advances to implement (continuation)
+    await host.pollOnce();
+    fakeRunner.resolve("1", createNormalResult());
+    await host.waitForIdle();
+
+    // Only the initial dispatch notification
+    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events[0]).toMatchObject({
+      type: "issue_dispatched",
+      reworkCount: 0,
+    });
+
+    // Stage 2: implement → completes, advances to review (continuation)
+    const retryImpl = await host.runRetryTimer("1");
+    expect(retryImpl.dispatched).toBe(true);
+    fakeRunner.resolve("1", createNormalResult());
+    await host.waitForIdle();
+
+    // No new dispatch notification — continuation, not rework
+    expect(notifier.events).toHaveLength(1);
+
+    // Stage 3: review → agent outputs [STAGE_FAILED: review] to trigger rework
+    const retryReview = await host.runRetryTimer("1");
+    expect(retryReview.dispatched).toBe(true);
+    fakeRunner.resolve("1", {
+      ...createNormalResult(),
+      liveSession: {
+        ...createNormalResult().liveSession,
+        lastCodexMessage: "[STAGE_FAILED: review]",
+      },
+    });
+    await host.waitForIdle();
+
+    // Still no new dispatch notification — rework is scheduled but not yet dispatched
+    expect(notifier.events).toHaveLength(1);
+
+    // Stage 4: implement (rework) — this dispatch should fire a second issue_dispatched
+    const retryRework = await host.runRetryTimer("1");
+    expect(retryRework.dispatched).toBe(true);
+
+    // Second issue_dispatched notification should have fired with reworkCount: 1
+    const dispatchEvents = notifier.events.filter(
+      (e) => e.type === "issue_dispatched",
+    );
+    expect(dispatchEvents).toHaveLength(2);
+    expect(dispatchEvents[1]).toMatchObject({
+      type: "issue_dispatched",
+      issueIdentifier: "ISSUE-1",
+      reworkCount: 1,
+    });
+
+    // Clean up: resolve the rework run
+    fakeRunner.resolve("1", createNormalResult());
+    await host.waitForIdle();
   });
 });
 

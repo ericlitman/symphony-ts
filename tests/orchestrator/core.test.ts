@@ -1047,6 +1047,7 @@ describe("orchestrator core integration flows", () => {
     });
     expect([...harness.orchestrator.getState().claimed]).toEqual([]);
     expect(harness.orchestrator.getState().retryAttempts).toEqual({});
+    expect(harness.orchestrator.getState().failed.has("1")).toBe(true);
   });
 
   it("stops a stalled worker through the fake runner boundary and releases it when the issue is no longer active", async () => {
@@ -1101,6 +1102,7 @@ describe("orchestrator core integration flows", () => {
     });
     expect([...harness.orchestrator.getState().claimed]).toEqual([]);
     expect(harness.orchestrator.getState().retryAttempts).toEqual({});
+    expect(harness.orchestrator.getState().failed.has("1")).toBe(true);
   });
 });
 
@@ -3344,6 +3346,7 @@ function createOrchestrator(overrides?: {
   tracker?: IssueTracker;
   timerScheduler?: ReturnType<typeof createFakeTimerScheduler>;
   stopRunningIssue?: OrchestratorCoreOptions["stopRunningIssue"];
+  onIssueDropped?: OrchestratorCoreOptions["onIssueDropped"];
   now?: () => Date;
 }) {
   const tracker =
@@ -3364,6 +3367,10 @@ function createOrchestrator(overrides?: {
 
   if (overrides?.stopRunningIssue !== undefined) {
     options.stopRunningIssue = overrides.stopRunningIssue;
+  }
+
+  if (overrides?.onIssueDropped !== undefined) {
+    options.onIssueDropped = overrides.onIssueDropped;
   }
 
   if (overrides?.timerScheduler !== undefined) {
@@ -3717,5 +3724,123 @@ describe("dispatch failure diagnostics", () => {
     } finally {
       console.warn = origWarn;
     }
+  });
+});
+
+describe("onIssueDropped callback", () => {
+  it("calls onIssueDropped when retry timer releases issue not in candidates", async () => {
+    const timers = createFakeTimerScheduler();
+    const dropped: Array<{
+      issueId: string;
+      identifier: string;
+      title: string | null;
+      reason: string;
+    }> = [];
+    const orchestrator = createOrchestrator({
+      timerScheduler: timers,
+      onIssueDropped: (input) => {
+        dropped.push(input);
+      },
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "stopped",
+    });
+
+    // Set candidates to empty so issue won't be found
+    const emptyTracker = createTracker({ candidates: [] });
+    orchestrator.updateTracker(emptyTracker);
+
+    await orchestrator.onRetryTimer("1");
+
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]!.identifier).toBe("ISSUE-1");
+    expect(dropped[0]!.reason).toBe("issue no longer in candidate list");
+  });
+
+  it("calls onIssueDropped when retry timer releases ineligible issue", async () => {
+    const timers = createFakeTimerScheduler();
+    const dropped: Array<{
+      issueId: string;
+      identifier: string;
+      title: string | null;
+      reason: string;
+    }> = [];
+    const orchestrator = createOrchestrator({
+      timerScheduler: timers,
+      onIssueDropped: (input) => {
+        dropped.push(input);
+      },
+    });
+
+    await orchestrator.pollTick();
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "stopped",
+    });
+
+    // Issue still in candidates but in a non-active state (Backlog)
+    const backlogTracker = createTracker({
+      candidates: [
+        createIssue({ id: "1", identifier: "ISSUE-1", state: "Backlog" }),
+      ],
+    });
+    orchestrator.updateTracker(backlogTracker);
+
+    await orchestrator.onRetryTimer("1");
+
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]!.identifier).toBe("ISSUE-1");
+    expect(dropped[0]!.reason).toBe("issue no longer eligible for retry");
+  });
+});
+
+describe("isFirstDispatch flag", () => {
+  it("passes isFirstDispatch true on first dispatch and false on retry", async () => {
+    const timers = createFakeTimerScheduler();
+    const dispatches: Array<{ identifier: string; isFirstDispatch: boolean }> =
+      [];
+
+    const tracker = createTracker({
+      candidates: [createIssue({ id: "1", identifier: "ISSUE-1" })],
+      statesById: [{ id: "1", identifier: "ISSUE-1", state: "In Progress" }],
+    });
+
+    const orchestrator = new OrchestratorCore({
+      config: createConfig(),
+      tracker,
+      spawnWorker: async (input) => {
+        dispatches.push({
+          identifier: input.issue.identifier,
+          isFirstDispatch: input.isFirstDispatch,
+        });
+        return {
+          workerHandle: { pid: 1001 },
+          monitorHandle: { ref: "monitor-1" },
+        };
+      },
+      timerScheduler: timers,
+      now: () => new Date("2026-03-06T00:00:05.000Z"),
+    });
+
+    // First dispatch
+    await orchestrator.pollTick();
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0]!.isFirstDispatch).toBe(true);
+
+    // Abnormal exit -> retry
+    orchestrator.onWorkerExit({
+      issueId: "1",
+      outcome: "abnormal",
+      reason: "error",
+    });
+
+    await orchestrator.onRetryTimer("1");
+    expect(dispatches).toHaveLength(2);
+    expect(dispatches[1]!.isFirstDispatch).toBe(false);
   });
 });

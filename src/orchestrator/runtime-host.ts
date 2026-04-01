@@ -158,6 +158,8 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
 
   readonly notifier: PipelineNotificationSink | null;
 
+  private readonly lastNotifiedReworkCount = new Map<string, number>();
+
   constructor(options: RuntimeHostOptions) {
     this.config = options.config;
     this.tracker = options.tracker;
@@ -237,14 +239,45 @@ export class OrchestratorRuntimeHost implements DashboardServerHost {
             },
           }
         : {}),
-      spawnWorker: async ({ issue, attempt, stage, stageName, reworkCount }) =>
-        this.spawnWorkerExecution(
+      spawnWorker: async ({
+        issue,
+        attempt,
+        stage,
+        stageName,
+        reworkCount,
+        isFirstDispatch,
+      }) => {
+        const lastRework = this.lastNotifiedReworkCount.get(issue.id) ?? 0;
+        const isNewRework = !isFirstDispatch && reworkCount > lastRework;
+
+        if ((isFirstDispatch || isNewRework) && this.notifier !== null) {
+          this.lastNotifiedReworkCount.set(issue.id, reworkCount);
+          this.notifier.notify({
+            type: "issue_dispatched",
+            issueIdentifier: issue.identifier,
+            issueTitle: issue.title,
+            issueUrl: issue.url ?? null,
+            stageName,
+            reworkCount,
+          });
+        }
+        return this.spawnWorkerExecution(
           issue,
           attempt,
           stage,
           stageName,
           reworkCount,
-        ),
+        );
+      },
+      onIssueDropped: ({ identifier, title, url, reason }) => {
+        this.notifier?.notify({
+          type: "issue_dropped",
+          issueIdentifier: identifier,
+          issueTitle: title ?? identifier,
+          issueUrl: url,
+          reason,
+        });
+      },
       stopRunningIssue: async (input) => {
         await this.stopWorkerExecution(input.issueId, {
           issueId: input.issueId,
@@ -1232,6 +1265,8 @@ export async function startRuntimeService(
       failedCount: runtimeState.failed.size,
       durationMs: Date.now() - startupTimestamp,
     });
+
+    await runtimeHost.notifier?.flush?.();
 
     resolveExit(exitPromise, pendingExitCode);
     resolveClosed(exitPromise);
