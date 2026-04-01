@@ -62,13 +62,32 @@ export interface InfraErrorEvent {
   errorReason: string;
 }
 
+export interface IssueDispatchedEvent {
+  type: "issue_dispatched";
+  issueIdentifier: string;
+  issueTitle: string;
+  issueUrl: string | null;
+  stageName: string | null;
+  reworkCount: number;
+}
+
+export interface IssueDroppedEvent {
+  type: "issue_dropped";
+  issueIdentifier: string;
+  issueTitle: string;
+  issueUrl: string | null;
+  reason: string;
+}
+
 export type PipelineNotificationEvent =
   | PipelineStartedEvent
   | PipelineStoppedEvent
   | IssueCompletedEvent
   | IssueFailedEvent
   | StallKilledEvent
-  | InfraErrorEvent;
+  | InfraErrorEvent
+  | IssueDispatchedEvent
+  | IssueDroppedEvent;
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -190,6 +209,37 @@ export function formatNotification(event: PipelineNotificationEvent): string {
         version,
       ].join("\n");
     }
+
+    case "issue_dispatched": {
+      const parts = [
+        `:arrow_forward: *Issue dispatched* — ${event.issueIdentifier}`,
+        `*${event.issueTitle}*`,
+      ];
+      if (event.issueUrl !== null) {
+        parts.push(event.issueUrl);
+      }
+      if (event.stageName !== null) {
+        parts.push(`Stage: ${event.stageName}`);
+      }
+      if (event.reworkCount > 0) {
+        parts.push(`Rework #${event.reworkCount}`);
+      }
+      parts.push(version);
+      return parts.join("\n");
+    }
+
+    case "issue_dropped": {
+      const parts = [
+        `:stop_button: *Issue left pipeline* — ${event.issueIdentifier}`,
+        `*${event.issueTitle}*`,
+      ];
+      if (event.issueUrl !== null) {
+        parts.push(event.issueUrl);
+      }
+      parts.push(`Reason: ${event.reason}`);
+      parts.push(version);
+      return parts.join("\n");
+    }
   }
 }
 
@@ -231,6 +281,7 @@ export function createSlackPoster(input: {
 
 export interface PipelineNotificationSink {
   notify(event: PipelineNotificationEvent): void;
+  flush?(): Promise<void>;
 }
 
 export interface PipelineNotifierOptions {
@@ -243,6 +294,7 @@ export class PipelineNotifier implements PipelineNotificationSink {
   private readonly channel: string;
   private readonly poster: NotificationPoster;
   private readonly onError: (error: unknown) => void;
+  private readonly inflight: Set<Promise<void>> = new Set();
 
   constructor(options: PipelineNotifierOptions) {
     this.channel = options.channel;
@@ -252,8 +304,18 @@ export class PipelineNotifier implements PipelineNotificationSink {
 
   notify(event: PipelineNotificationEvent): void {
     const text = formatNotification(event);
-    void this.poster.post(this.channel, text).catch((error) => {
+    const p = this.poster.post(this.channel, text).catch((error) => {
       this.onError(error);
     });
+    this.inflight.add(p);
+    void p.finally(() => this.inflight.delete(p));
+  }
+
+  async flush(timeoutMs = 5000): Promise<void> {
+    if (this.inflight.size === 0) return;
+    await Promise.race([
+      Promise.allSettled(this.inflight),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 }

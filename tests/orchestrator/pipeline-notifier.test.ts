@@ -234,6 +234,50 @@ describe("formatNotification", () => {
     expect(text).toContain("SYMPH-42");
     expect(text).toContain("Failed to start agent process");
   });
+
+  it("formats issue_dispatched for first entry", () => {
+    const text = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    expect(text).toContain("Issue dispatched");
+    expect(text).toContain("SYMPH-42");
+    expect(text).toContain("Add pagination");
+    expect(text).toContain("Stage: investigate");
+    expect(text).not.toContain("Rework");
+  });
+
+  it("formats issue_dispatched with rework count", () => {
+    const text = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: null,
+      stageName: "implement",
+      reworkCount: 2,
+    });
+    expect(text).toContain("Issue dispatched");
+    expect(text).toContain("Rework #2");
+    expect(text).toContain("Stage: implement");
+  });
+
+  it("formats issue_dropped", () => {
+    const text = formatNotification({
+      type: "issue_dropped",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      reason: "issue no longer in candidate list",
+    });
+    expect(text).toContain("Issue left pipeline");
+    expect(text).toContain("SYMPH-42");
+    expect(text).toContain("Add pagination");
+    expect(text).toContain("issue no longer in candidate list");
+  });
 });
 
 describe("PipelineNotifier", () => {
@@ -354,5 +398,72 @@ describe("PipelineNotifier", () => {
 
     expect(poster.calls).toHaveLength(3);
     expect(poster.calls.every((c) => c.channel === "C12345")).toBe(true);
+  });
+
+  it("flush resolves immediately when no in-flight notifications", async () => {
+    const poster = createMockPoster();
+    const notifier = new PipelineNotifier({
+      channel: "C12345",
+      poster,
+    });
+
+    await notifier.flush();
+    // No error = pass
+  });
+
+  it("flush awaits in-flight notifications", async () => {
+    let resolvePost: (() => void) | undefined;
+    const slowPoster: NotificationPoster = {
+      async post(): Promise<void> {
+        await new Promise<void>((resolve) => {
+          resolvePost = resolve;
+        });
+      },
+    };
+    const notifier = new PipelineNotifier({
+      channel: "C12345",
+      poster: slowPoster,
+    });
+
+    notifier.notify({
+      type: "pipeline_started",
+      productName: "test",
+      dashboardUrl: null,
+    });
+
+    let flushed = false;
+    const flushPromise = notifier.flush().then(() => {
+      flushed = true;
+    });
+
+    // Not yet flushed — post is still pending
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(flushed).toBe(false);
+
+    // Resolve the post
+    resolvePost!();
+    await flushPromise;
+    expect(flushed).toBe(true);
+  });
+
+  it("flush resolves after timeout even if poster hangs", async () => {
+    const hangingPoster: NotificationPoster = {
+      async post(): Promise<void> {
+        await new Promise<void>(() => {}); // never resolves
+      },
+    };
+    const notifier = new PipelineNotifier({
+      channel: "C12345",
+      poster: hangingPoster,
+    });
+
+    notifier.notify({
+      type: "pipeline_started",
+      productName: "test",
+      dashboardUrl: null,
+    });
+
+    // flush with a short timeout should resolve despite hanging poster
+    await notifier.flush(100);
   });
 });

@@ -96,7 +96,15 @@ export interface OrchestratorCoreOptions {
     stage: StageDefinition | null;
     stageName: string | null;
     reworkCount: number;
+    isFirstDispatch: boolean;
   }) => Promise<SpawnWorkerResult> | SpawnWorkerResult;
+  onIssueDropped?: (input: {
+    issueId: string;
+    identifier: string;
+    title: string | null;
+    url: string | null;
+    reason: string;
+  }) => void;
   stopRunningIssue?: (input: {
     issueId: string;
     runningEntry: RunningEntry;
@@ -127,6 +135,8 @@ export class OrchestratorCore {
   private tracker: IssueTracker;
 
   private readonly spawnWorker: OrchestratorCoreOptions["spawnWorker"];
+
+  private readonly onIssueDropped?: OrchestratorCoreOptions["onIssueDropped"];
 
   private readonly stopRunningIssue?: OrchestratorCoreOptions["stopRunningIssue"];
 
@@ -159,6 +169,7 @@ export class OrchestratorCore {
     this.config = options.config;
     this.tracker = options.tracker;
     this.spawnWorker = options.spawnWorker;
+    this.onIssueDropped = options.onIssueDropped;
     this.stopRunningIssue = options.stopRunningIssue;
     this.runEnsembleGate = options.runEnsembleGate;
     this.postComment = options.postComment;
@@ -405,7 +416,19 @@ export class OrchestratorCore {
     const issue =
       candidates.find((candidate) => candidate.id === issueId) ?? null;
     if (issue === null) {
+      this.state.failed.add(issueId);
       this.releaseClaim(issueId);
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      delete this.state.issueExecutionHistory[issueId];
+      delete this.state.issueFirstDispatchedAt[issueId];
+      this.onIssueDropped?.({
+        issueId,
+        identifier: retryEntry.identifier ?? issueId,
+        title: null,
+        url: null,
+        reason: "issue no longer in candidate list",
+      });
       return {
         dispatched: false,
         released: true,
@@ -414,7 +437,19 @@ export class OrchestratorCore {
     }
 
     if (!this.isRetryCandidateEligible(issue)) {
+      this.state.failed.add(issueId);
       this.releaseClaim(issueId);
+      delete this.state.issueStages[issueId];
+      delete this.state.issueReworkCounts[issueId];
+      delete this.state.issueExecutionHistory[issueId];
+      delete this.state.issueFirstDispatchedAt[issueId];
+      this.onIssueDropped?.({
+        issueId,
+        identifier: issue.identifier,
+        title: issue.title,
+        url: issue.url ?? null,
+        reason: "issue no longer eligible for retry",
+      });
       return {
         dispatched: false,
         released: true,
@@ -1422,7 +1457,8 @@ export class OrchestratorCore {
       }
     }
 
-    if (!this.state.issueFirstDispatchedAt[issue.id]) {
+    const isFirstDispatch = !this.state.issueFirstDispatchedAt[issue.id];
+    if (isFirstDispatch) {
       this.state.issueFirstDispatchedAt[issue.id] = formatEasternTimestamp(
         this.now(),
       );
@@ -1436,6 +1472,7 @@ export class OrchestratorCore {
         stage,
         stageName,
         reworkCount,
+        isFirstDispatch,
       });
       const runEntry: RunningEntry = {
         ...createEmptyLiveSession(),

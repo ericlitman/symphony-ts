@@ -1228,8 +1228,12 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events).toHaveLength(2);
     expect(notifier.events[0]).toMatchObject({
+      type: "issue_dispatched",
+      issueIdentifier: "ISSUE-1",
+    });
+    expect(notifier.events[1]).toMatchObject({
       type: "issue_completed",
       issueIdentifier: "ISSUE-1",
       issueTitle: "Issue 1",
@@ -1298,8 +1302,8 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
-    const event = notifier.events[0]!;
+    expect(notifier.events).toHaveLength(2);
+    const event = notifier.events[1]!;
     expect(event.type).toBe("issue_completed");
     // The history must contain the final stage record — not be empty
     const completed = event as Extract<
@@ -1394,8 +1398,9 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    // No completion notification yet — stage continuation
-    expect(notifier.events).toHaveLength(0);
+    // Only the initial dispatch notification — no completion yet (stage continuation)
+    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events[0]).toMatchObject({ type: "issue_dispatched" });
 
     // Stage 2: fire the continuation retry timer to dispatch "implement"
     const retryResult = await host.runRetryTimer("1");
@@ -1404,9 +1409,9 @@ describe("pipeline notifications", () => {
     fakeRunner.resolve("1", createNormalResult());
     await host.waitForIdle();
 
-    // Now we should see the terminal completion
-    expect(notifier.events).toHaveLength(1);
-    const event = notifier.events[0]!;
+    // Dispatch + terminal completion (no second dispatch — continuation, not rework)
+    expect(notifier.events).toHaveLength(2);
+    const event = notifier.events[1]!;
     expect(event.type).toBe("issue_completed");
     // History must include records from BOTH stages
     const completed = event as Extract<
@@ -1504,8 +1509,9 @@ describe("pipeline notifications", () => {
     await host.waitForIdle();
 
     // Stage advanced from investigate → implement, scheduled continuation retry.
-    // No notification should fire.
-    expect(notifier.events).toHaveLength(0);
+    // Only the initial dispatch notification — no terminal notification.
+    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events[0]).toMatchObject({ type: "issue_dispatched" });
   });
 
   it("fires issue_failed when retries are exhausted", async () => {
@@ -1530,8 +1536,12 @@ describe("pipeline notifications", () => {
     fakeRunner.reject("1", new Error("agent crashed"));
     await host.waitForIdle();
 
-    expect(notifier.events).toHaveLength(1);
+    expect(notifier.events).toHaveLength(2);
     expect(notifier.events[0]).toMatchObject({
+      type: "issue_dispatched",
+      issueIdentifier: "ISSUE-1",
+    });
+    expect(notifier.events[1]).toMatchObject({
       type: "issue_failed",
       issueIdentifier: "ISSUE-1",
       retriesExhausted: true,
