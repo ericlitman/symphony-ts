@@ -192,6 +192,8 @@ export class ClaudeCodeRunner implements AgentRunnerCodexClient {
           cwd: this.options.cwd,
           permissionMode: "bypassPermissions",
           env: { SYMPHONY_PIPELINE: "1" },
+          settingSources: ["user", "project"],
+          maxBudgetUsd: 50,
         }),
         prompt,
         abortSignal: controller.signal,
