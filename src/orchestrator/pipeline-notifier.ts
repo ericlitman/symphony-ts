@@ -224,14 +224,56 @@ export function formatNotification(
 
     case "pipeline_stopped": {
       const total = event.completedCount + event.failedCount;
-      return {
-        text: [
-          `:stop_sign: *Pipeline stopped* — ${event.productName}`,
-          `Completed: ${event.completedCount} · Failed: ${event.failedCount} · Total: ${total}`,
-          `Duration: ${formatDurationMs(event.durationMs)}`,
-          version,
-        ].join("\n"),
-      };
+      const text = [
+        `:stop_sign: *Pipeline stopped* — ${event.productName}`,
+        `Completed: ${event.completedCount} · Failed: ${event.failedCount} · Total: ${total}`,
+        `Duration: ${formatDurationMs(event.durationMs)}`,
+        version,
+      ].join("\n");
+
+      const blocks: SlackBlock[] = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `🛑 Pipeline stopped — ${event.productName}`,
+            emoji: true,
+          },
+        },
+        { type: "divider" },
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `:white_check_mark: *${event.completedCount} completed*`,
+            },
+            {
+              type: "mrkdwn",
+              text: `:x: *${event.failedCount} failed*`,
+            },
+            {
+              type: "mrkdwn",
+              text: `:bar_chart: *${total} total*`,
+            },
+          ],
+        },
+        {
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `:stopwatch: *${formatDurationMs(event.durationMs)}*`,
+            },
+          ],
+        },
+        {
+          type: "context",
+          elements: [{ type: "mrkdwn", text: version }],
+        },
+      ];
+
+      return { text, blocks };
     }
 
     case "issue_completed": {
@@ -326,7 +368,57 @@ export function formatNotification(
         parts.push(`Retries exhausted (attempt ${event.retryAttempt ?? "?"})`);
       }
       parts.push(version);
-      return { text: parts.join("\n") };
+      const text = parts.join("\n");
+
+      const titleText =
+        event.issueUrl !== null
+          ? `*${event.issueTitle}*\n<${event.issueUrl}|View in Linear>`
+          : `*${event.issueTitle}*`;
+
+      const blocks: SlackBlock[] = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `❌ Issue failed — ${event.issueIdentifier}`,
+            emoji: true,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: titleText },
+        },
+        { type: "divider" },
+      ];
+
+      if (event.failureReason !== null) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `Reason: ${event.failureReason}`,
+          },
+        });
+      }
+
+      if (event.retriesExhausted) {
+        blocks.push({
+          type: "section",
+          fields: [
+            {
+              type: "mrkdwn",
+              text: `:repeat: *Retries exhausted (attempt ${event.retryAttempt ?? "?"})*`,
+            },
+          ],
+        });
+      }
+
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: version }],
+      });
+
+      return { text, blocks };
     }
 
     case "stall_killed": {
@@ -426,7 +518,51 @@ export function formatNotification(
         parts.push(`Rework #${event.reworkCount}`);
       }
       parts.push(version);
-      return { text: parts.join("\n") };
+      const text = parts.join("\n");
+
+      const titleText =
+        event.issueUrl !== null
+          ? `*${event.issueTitle}*\n<${event.issueUrl}|View in Linear>`
+          : `*${event.issueTitle}*`;
+
+      const blocks: SlackBlock[] = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `▶️ Issue dispatched — ${event.issueIdentifier}`,
+            emoji: true,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: titleText },
+        },
+      ];
+
+      const fields: SlackTextObject[] = [];
+      if (event.stageName !== null) {
+        fields.push({
+          type: "mrkdwn",
+          text: `:gear: *Stage: ${event.stageName}*`,
+        });
+      }
+      if (event.reworkCount > 0) {
+        fields.push({
+          type: "mrkdwn",
+          text: `:repeat: *Rework #${event.reworkCount}*`,
+        });
+      }
+      if (fields.length > 0) {
+        blocks.push({ type: "section", fields });
+      }
+
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: version }],
+      });
+
+      return { text, blocks };
     }
 
     case "issue_dropped": {
