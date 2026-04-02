@@ -165,17 +165,14 @@ export function formatStageTimeline(history: ExecutionHistory): string {
     .join("\n");
 }
 
+function formatCompactUnit(value: number, suffix: string): string {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}${suffix}`;
+}
+
 export function formatTokensCompact(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    const value = tokens / 1_000_000;
-    const rounded = Math.round(value * 10) / 10;
-    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}M`;
-  }
-  if (tokens >= 1_000) {
-    const value = tokens / 1_000;
-    const rounded = Math.round(value * 10) / 10;
-    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}k`;
-  }
+  if (tokens >= 1_000_000) return formatCompactUnit(tokens / 1_000_000, "M");
+  if (tokens >= 1_000) return formatCompactUnit(tokens / 1_000, "k");
   return `${tokens}`;
 }
 
