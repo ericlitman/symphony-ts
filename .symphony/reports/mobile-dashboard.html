@@ -1894,6 +1894,15 @@ body {
     } catch { return ''; }
   }
 
+  function formatResetTime(isoStr, fallback) {
+    if (!isoStr) return fallback || 'unknown';
+    try {
+      const d = new Date(isoStr);
+      if (Number.isNaN(d.getTime())) return fallback || 'unknown';
+      return 'Resets ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch { return fallback || 'unknown'; }
+  }
+
   // ── Usage Gauges & Account Info ──
   function gaugeColorClass(pct) {
     if (pct >= 90) return 'danger';
@@ -1971,17 +1980,11 @@ body {
 
         // Update 5-hour gauge
         const fiveHour = data.five_hour;
-        const fiveHourDetail = fiveHour.resets_at
-          ? 'Resets ' + new Date(fiveHour.resets_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-          : '5-hour usage';
-        setGauge('5h', fiveHour.utilization, fiveHourDetail);
+        setGauge('5h', fiveHour.utilization, formatResetTime(fiveHour.resets_at, '5-hour usage'));
 
-        // Update 7-day gauge
+        // Update 7-day gauge (DOM IDs remain 'weekly' — see SYMPH-250 spec)
         const sevenDay = data.seven_day;
-        const sevenDayDetail = sevenDay.resets_at
-          ? 'Resets ' + new Date(sevenDay.resets_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-          : '7-day usage';
-        setGauge('weekly', sevenDay.utilization, sevenDayDetail);
+        setGauge('weekly', sevenDay.utilization, formatResetTime(sevenDay.resets_at, '7-day usage'));
 
         // Update active account info
         const emailEl = $('#account-email');

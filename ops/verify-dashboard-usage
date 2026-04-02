@@ -58,10 +58,10 @@ FAILURES=0
 
 # 1. No error banner visible
 ERROR_BANNER=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-  --expression "document.querySelector('#usage-error')?.classList.contains('visible') ?? false" 2>/dev/null)
+  --expression "document.querySelector('#usage-error')?.classList.contains('visible') ?? false" 2>/dev/null || true)
 if [[ "$ERROR_BANNER" == "true" ]]; then
   ERROR_TEXT=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-    --expression "document.querySelector('#usage-error')?.textContent || ''" 2>/dev/null)
+    --expression "document.querySelector('#usage-error')?.textContent || ''" 2>/dev/null || true)
   echo "FAIL: Error banner is visible: $ERROR_TEXT"
   FAILURES=$((FAILURES + 1))
 else
@@ -70,7 +70,7 @@ fi
 
 # 2. 5-hour gauge renders (fill element has non-zero width or stroke)
 FIVE_HOUR_GAUGE=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-  --expression "document.querySelector('#gauge-5h-fill') !== null" 2>/dev/null)
+  --expression "document.querySelector('#gauge-5h-fill') !== null" 2>/dev/null || true)
 if [[ "$FIVE_HOUR_GAUGE" != "true" ]]; then
   echo "FAIL: 5-hour gauge fill element not found"
   FAILURES=$((FAILURES + 1))
@@ -80,7 +80,7 @@ fi
 
 # 3. Weekly gauge renders
 WEEKLY_GAUGE=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-  --expression "document.querySelector('#gauge-weekly-fill') !== null" 2>/dev/null)
+  --expression "document.querySelector('#gauge-weekly-fill') !== null" 2>/dev/null || true)
 if [[ "$WEEKLY_GAUGE" != "true" ]]; then
   echo "FAIL: Weekly gauge fill element not found"
   FAILURES=$((FAILURES + 1))
@@ -90,7 +90,7 @@ fi
 
 # 4. Account email is populated (not empty or "Loading...")
 ACCOUNT_EMAIL=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-  --expression "document.querySelector('#account-email')?.textContent?.trim() || ''" 2>/dev/null)
+  --expression "document.querySelector('#account-email')?.textContent?.trim() || ''" 2>/dev/null || true)
 if [[ -z "$ACCOUNT_EMAIL" || "$ACCOUNT_EMAIL" == "Loading..." ]]; then
   echo "FAIL: Account email not populated (got: '$ACCOUNT_EMAIL')"
   FAILURES=$((FAILURES + 1))
@@ -100,7 +100,7 @@ fi
 
 # 5. Account org is populated (not empty or em-dash placeholder from initial load)
 ACCOUNT_ORG=$("$AGENT_BROWSER" evaluate --session "$SESSION_NAME" \
-  --expression "document.querySelector('#account-org')?.textContent?.trim() || ''" 2>/dev/null)
+  --expression "document.querySelector('#account-org')?.textContent?.trim() || ''" 2>/dev/null || true)
 if [[ -z "$ACCOUNT_ORG" ]]; then
   echo "FAIL: Account org not populated"
   FAILURES=$((FAILURES + 1))
