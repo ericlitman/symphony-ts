@@ -339,37 +339,346 @@ describe("formatNotification", () => {
     expect(result.text).toContain("issue no longer in candidate list");
   });
 
-  it("returns text only with no blocks for non-block-kit events", () => {
-    const events: PipelineNotificationEvent[] = [
-      {
-        type: "pipeline_stopped",
-        productName: "test",
-        completedCount: 1,
-        failedCount: 0,
-        durationMs: 5000,
-      },
-      {
-        type: "issue_failed",
-        issueIdentifier: "T-1",
-        issueTitle: "t",
-        issueUrl: null,
-        failureReason: null,
-        retriesExhausted: false,
-        retryAttempt: null,
-      },
-      {
-        type: "issue_dispatched",
-        issueIdentifier: "T-1",
-        issueTitle: "t",
-        issueUrl: null,
-        stageName: null,
-        reworkCount: 0,
-      },
-    ];
-    for (const event of events) {
-      const result = formatNotification(event);
-      expect(result.text).toBeTruthy();
-      expect(result).not.toHaveProperty("blocks");
+  // --- Block Kit tests for pipeline_stopped ---
+
+  it("pipeline_stopped returns Block Kit with header containing stop sign and product name", () => {
+    const result = formatNotification({
+      type: "pipeline_stopped",
+      productName: "symphony",
+      completedCount: 5,
+      failedCount: 2,
+      durationMs: 3_600_000,
+    });
+    expect(result.blocks).toBeDefined();
+    const blocks = result.blocks!;
+    // header, divider, section (count fields), section (duration field), context
+    expect(blocks).toHaveLength(5);
+
+    const header = blocks[0] as { type: "header"; text: { text: string } };
+    expect(header.type).toBe("header");
+    expect(header.text.text).toContain("Pipeline stopped");
+    expect(header.text.text).toContain("symphony");
+
+    expect(blocks[1]?.type).toBe("divider");
+    expect(blocks[4]?.type).toBe("context");
+  });
+
+  it("pipeline_stopped includes count fields for completed, failed, and total", () => {
+    const result = formatNotification({
+      type: "pipeline_stopped",
+      productName: "test",
+      completedCount: 3,
+      failedCount: 1,
+      durationMs: 60_000,
+    });
+    const blocks = result.blocks!;
+    const statsBlock = blocks[2] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(statsBlock.type).toBe("section");
+    expect(statsBlock.fields).toHaveLength(3);
+    expect(statsBlock.fields[0]?.text).toContain("3 completed");
+    expect(statsBlock.fields[1]?.text).toContain("1 failed");
+    expect(statsBlock.fields[2]?.text).toContain("4 total");
+  });
+
+  it("pipeline_stopped includes duration field", () => {
+    const result = formatNotification({
+      type: "pipeline_stopped",
+      productName: "test",
+      completedCount: 1,
+      failedCount: 0,
+      durationMs: 3_600_000,
+    });
+    const blocks = result.blocks!;
+    const durationBlock = blocks[3] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(durationBlock.type).toBe("section");
+    expect(durationBlock.fields).toHaveLength(1);
+    expect(durationBlock.fields[0]?.text).toContain("1h");
+  });
+
+  // --- Block Kit tests for issue_failed ---
+
+  it("issue_failed returns Block Kit with header containing X emoji and identifier", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      failureReason: "Max retries exceeded",
+      retriesExhausted: true,
+      retryAttempt: 3,
+    });
+    expect(result.blocks).toBeDefined();
+    const blocks = result.blocks!;
+
+    const header = blocks[0] as { type: "header"; text: { text: string } };
+    expect(header.type).toBe("header");
+    expect(header.text.text).toContain("Issue failed");
+    expect(header.text.text).toContain("SYMPH-42");
+  });
+
+  it("issue_failed includes title with Linear link when URL is present", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      failureReason: null,
+      retriesExhausted: false,
+      retryAttempt: null,
+    });
+    const blocks = result.blocks!;
+    const titleBlock = blocks[1] as {
+      type: "section";
+      text: { text: string };
+    };
+    expect(titleBlock.type).toBe("section");
+    expect(titleBlock.text.text).toContain("*Add pagination*");
+    expect(titleBlock.text.text).toContain(
+      "<https://linear.app/mobilyze-llc/issue/SYMPH-42|View in Linear>",
+    );
+  });
+
+  it("issue_failed without URL omits View in Linear link", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Fix bug",
+      issueUrl: null,
+      failureReason: null,
+      retriesExhausted: false,
+      retryAttempt: null,
+    });
+    const blocks = result.blocks!;
+    const titleBlock = blocks[1] as {
+      type: "section";
+      text: { text: string };
+    };
+    expect(titleBlock.text.text).toBe("*Fix bug*");
+    expect(titleBlock.text.text).not.toContain("View in Linear");
+  });
+
+  it("issue_failed includes failure reason section when present", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Fix bug",
+      issueUrl: null,
+      failureReason: "Max retries exceeded",
+      retriesExhausted: false,
+      retryAttempt: null,
+    });
+    const blocks = result.blocks!;
+    // header, section (title), divider, section (reason), context
+    expect(blocks).toHaveLength(5);
+    const reasonBlock = blocks[3] as {
+      type: "section";
+      text: { text: string };
+    };
+    expect(reasonBlock.type).toBe("section");
+    expect(reasonBlock.text.text).toContain("Reason: Max retries exceeded");
+  });
+
+  it("issue_failed omits failure reason section when null", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Fix bug",
+      issueUrl: null,
+      failureReason: null,
+      retriesExhausted: false,
+      retryAttempt: null,
+    });
+    const blocks = result.blocks!;
+    // header, section (title), divider, context — no reason, no retries
+    expect(blocks).toHaveLength(4);
+    // Last block is context
+    expect(blocks[blocks.length - 1]?.type).toBe("context");
+  });
+
+  it("issue_failed includes retries exhausted field with attempt number", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Fix bug",
+      issueUrl: null,
+      failureReason: "Max retries exceeded",
+      retriesExhausted: true,
+      retryAttempt: 3,
+    });
+    const blocks = result.blocks!;
+    // header, section (title), divider, section (reason), section (retries field), context
+    expect(blocks).toHaveLength(6);
+    const retriesBlock = blocks[4] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(retriesBlock.type).toBe("section");
+    expect(retriesBlock.fields[0]?.text).toContain(
+      "Retries exhausted (attempt 3)",
+    );
+  });
+
+  it("issue_failed without exhaustion omits retries field", () => {
+    const result = formatNotification({
+      type: "issue_failed",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Fix bug",
+      issueUrl: null,
+      failureReason: null,
+      retriesExhausted: false,
+      retryAttempt: null,
+    });
+    const blocks = result.blocks!;
+    // No retries block — check no block has "Retries exhausted" text
+    for (const block of blocks) {
+      if ("fields" in block && block.fields) {
+        for (const field of block.fields) {
+          expect(field.text).not.toContain("Retries exhausted");
+        }
+      }
+    }
+  });
+
+  // --- Block Kit tests for issue_dispatched ---
+
+  it("issue_dispatched returns Block Kit with header containing play emoji and identifier", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    expect(result.blocks).toBeDefined();
+    const blocks = result.blocks!;
+
+    const header = blocks[0] as { type: "header"; text: { text: string } };
+    expect(header.type).toBe("header");
+    expect(header.text.text).toContain("Issue dispatched");
+    expect(header.text.text).toContain("SYMPH-42");
+  });
+
+  it("issue_dispatched includes title with Linear link when URL is present", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: "https://linear.app/mobilyze-llc/issue/SYMPH-42",
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    const titleBlock = blocks[1] as {
+      type: "section";
+      text: { text: string };
+    };
+    expect(titleBlock.type).toBe("section");
+    expect(titleBlock.text.text).toContain("*Add pagination*");
+    expect(titleBlock.text.text).toContain(
+      "<https://linear.app/mobilyze-llc/issue/SYMPH-42|View in Linear>",
+    );
+  });
+
+  it("issue_dispatched without URL omits View in Linear link", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: null,
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    const titleBlock = blocks[1] as {
+      type: "section";
+      text: { text: string };
+    };
+    expect(titleBlock.text.text).toBe("*Add pagination*");
+    expect(titleBlock.text.text).not.toContain("View in Linear");
+  });
+
+  it("issue_dispatched includes stage field", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: null,
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    // header, section (title), section (fields with stage), context
+    expect(blocks).toHaveLength(4);
+    const fieldsBlock = blocks[2] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(fieldsBlock.type).toBe("section");
+    expect(fieldsBlock.fields[0]?.text).toContain("Stage: investigate");
+  });
+
+  it("issue_dispatched with rework shows rework field", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: null,
+      stageName: "implement",
+      reworkCount: 2,
+    });
+    const blocks = result.blocks!;
+    const fieldsBlock = blocks[2] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(fieldsBlock.fields).toHaveLength(2);
+    expect(fieldsBlock.fields[0]?.text).toContain("Stage: implement");
+    expect(fieldsBlock.fields[1]?.text).toContain("Rework #2");
+  });
+
+  it("issue_dispatched without rework omits rework field", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-42",
+      issueTitle: "Add pagination",
+      issueUrl: null,
+      stageName: "investigate",
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    const fieldsBlock = blocks[2] as {
+      type: "section";
+      fields: Array<{ text: string }>;
+    };
+    expect(fieldsBlock.fields).toHaveLength(1);
+    expect(fieldsBlock.fields[0]?.text).not.toContain("Rework");
+  });
+
+  it("issue_dispatched with no stageName and reworkCount 0 omits fields section", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-99",
+      issueTitle: "No fields edge case",
+      issueUrl: null,
+      stageName: null,
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    // header + title section + context = 3 blocks (no fields section)
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]!.type).toBe("header");
+    expect(blocks[1]!.type).toBe("section");
+    expect(blocks[2]!.type).toBe("context");
+    // No block should have a fields property
+    for (const block of blocks) {
+      expect((block as { fields?: unknown }).fields).toBeUndefined();
     }
   });
 
