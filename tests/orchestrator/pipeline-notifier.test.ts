@@ -661,6 +661,27 @@ describe("formatNotification", () => {
     expect(fieldsBlock.fields[0]?.text).not.toContain("Rework");
   });
 
+  it("issue_dispatched with no stageName and reworkCount 0 omits fields section", () => {
+    const result = formatNotification({
+      type: "issue_dispatched",
+      issueIdentifier: "SYMPH-99",
+      issueTitle: "No fields edge case",
+      issueUrl: null,
+      stageName: null,
+      reworkCount: 0,
+    });
+    const blocks = result.blocks!;
+    // header + title section + context = 3 blocks (no fields section)
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]!.type).toBe("header");
+    expect(blocks[1]!.type).toBe("section");
+    expect(blocks[2]!.type).toBe("context");
+    // No block should have a fields property
+    for (const block of blocks) {
+      expect((block as { fields?: unknown }).fields).toBeUndefined();
+    }
+  });
+
   // --- Block Kit tests for pipeline_started ---
 
   it("pipeline_started with dashboard URL returns Block Kit with header, dashboard link, and context", () => {
