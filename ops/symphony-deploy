@@ -162,18 +162,27 @@ if $DO_SYMPHONY; then
 
   # Stop services before updating to prevent reading mixed old/new files
   # (git pull changes templates/configs while service is running from this directory)
+  SLACK_CTL="$SCRIPT_DIR/slack-bridge-ctl"
+  SLACK_PLIST="$HOME/Library/LaunchAgents/com.slack-bridge.plist"
+  SERVICES_STOPPED=false
+
   if ! $NO_RESTART && service_installed; then
     info "Stopping service before update..."
     run_or_dry "$CTL" stop
     ok "Service stopped"
+    SERVICES_STOPPED=true
   fi
 
-  SLACK_CTL="$SCRIPT_DIR/slack-bridge-ctl"
-  SLACK_PLIST="$HOME/Library/LaunchAgents/com.slack-bridge.plist"
   if ! $NO_RESTART && [[ -x "$SLACK_CTL" ]] && [[ -f "$SLACK_PLIST" ]]; then
     info "Stopping slack bridge before update..."
     run_or_dry "$SLACK_CTL" stop
     ok "Slack bridge stopped"
+    SERVICES_STOPPED=true
+  fi
+
+  # Restart services if the script fails mid-deploy (set -e would leave them down)
+  if $SERVICES_STOPPED && ! $DRY_RUN; then
+    trap 'warn "Deploy failed — restarting services..."; "$CTL" start 2>/dev/null || true; "$SLACK_CTL" start 2>/dev/null || true' ERR
   fi
 
   # Ensure clean checkout to main — stash uncommitted changes if needed

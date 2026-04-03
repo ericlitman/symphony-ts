@@ -232,6 +232,10 @@ cmd_restart() {
     info "Restarting service..."
     launchctl kickstart -k "gui/$(id -u)/${SERVICE_LABEL}"
   else
+    # Re-register if previously stopped via bootout (kickstart needs a bootstrapped label)
+    if ! launchctl print "gui/$(id -u)/${SERVICE_LABEL}" &>/dev/null; then
+      launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
+    fi
     launchctl kickstart "gui/$(id -u)/${SERVICE_LABEL}"
   fi
 
